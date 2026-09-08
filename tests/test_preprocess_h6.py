@@ -6,7 +6,11 @@ from scripts.preprocess_h6 import prepare
 
 class PrepareTests(unittest.TestCase):
     def setUp(self):
-        self.payload = json.loads((Path(__file__).resolve().parents[1] / 'H6.json').read_bytes())
+        root = Path(__file__).resolve().parents[1]
+        source = root / 'data/H6.json'
+        if not source.exists():
+            source = root / 'H6.json'
+        self.payload = json.loads(source.read_bytes())
 
     def test_real_catalog(self):
         original = copy.deepcopy(self.payload)

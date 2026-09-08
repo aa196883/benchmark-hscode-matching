@@ -10,11 +10,16 @@ from hs_matching.approaches.base import Prediction
 from hs_matching.approaches.registry import create_approach
 
 
-def run_prediction(query, top_k, context, configs, provider, approach='llm_direct'):
+def run_prediction(query, top_k, context, configs, provider, approach='llm_direct', *, retriever=None, retrieval_k=20):
     predictions = []
     for config in configs:
         try:
-            prediction = create_approach(approach, provider=provider, config=config).predict(query, top_k, context)
+            if approach == 'embeddings' and (retriever is None or config != retriever.index.config):
+                raise ValueError('Configuration incompatible avec le retriever')
+            dependencies = {'retriever': retriever} if approach == 'embeddings' else {'provider': provider, 'config': config}
+            if approach == 'rag':
+                dependencies.update(retriever=retriever, retrieval_k=retrieval_k)
+            prediction = create_approach(approach, **dependencies).predict(query, top_k, context)
         except Exception as exc:
             # Une erreur inattendue ne doit pas empêcher les autres modèles de répondre.
             prediction = Prediction(status='error', metadata={'approach': approach, 'config': config.to_dict()},
