@@ -1,0 +1,2 @@
+{% if card.retrieved %}<div class="retrieval-tags"><span>Rang initial #{{ card.retrieved.rank }}</span><span>Cosinus {{ '%.3f'|format(card.retrieved.score) }}</span></div>{% endif %}
+{% if card.candidate.explanation %}<div class="explanation"><span class="detail-label">CLASSEMENT SUR LES TEXTES FOURNIS</span><p>{{ card.candidate.explanation }}</p></div>{% endif %}

@@ -11,9 +11,15 @@ dependencies = []
 
 [project.optional-dependencies]
 embeddings = ["numpy>=1.24,<3"]
+web = ["Flask>=3.1,<4", "numpy>=1.24,<3"]
+visual = ["playwright>=1.50,<2"]
 
 [project.scripts]
 hs-matching = "hs_matching.cli:main"
+hs-matching-web = "hs_matching.web:main"
 
 [tool.setuptools.packages.find]
 include = ["hs_matching*"]
+
+[tool.setuptools.package-data]
+hs_matching = ["templates/*.html", "templates/cards/*.html", "static/*.css", "static/*.js"]

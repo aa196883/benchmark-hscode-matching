@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HS Lab · Comparer les approches</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</head>
+<body>
+<header class="topbar"><a class="brand" href="{{ url_for('index') }}"><span class="brand-icon">HS</span> <span>Classification <b>Lab</b></span></a><div class="edition"><span class="live-dot"></span> HS 2022 <span class="divider">/</span> Catalogue anglais</div></header>
+<main>
+  <div class="intro"><div><div class="eyebrow">ESPACE D’EXPÉRIMENTATION</div><h1>Une description.<br class="mobile-break"> Plusieurs regards.</h1><p>Comparez les codes proposés et comprenez ce qui distingue les approches.</p></div><span class="mode-badge">{{ 'DÉMO · DONNÉES SIMULÉES' if demo else 'COMPARAISON LOCALE' }}</span></div>
+  {% if error %}<div class="alert error" role="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ url_for('index') }}" id="comparison-form">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <div class="workspace">
+      <section class="query-panel"><div class="section-heading"><label for="query">Décrivez votre marchandise</label><span class="small-tag">EN</span></div>
+        <textarea id="query" name="query" required maxlength="12000" placeholder="e.g. Short-sleeved knitted T-shirts, made of 100% cotton…">{{ options.query }}</textarea>
+        <div class="query-footer"><span>Précisez la matière, la fabrication et l’usage.</span><button type="button" class="text-button" id="example">Essayer un exemple ↗</button></div>
+      </section>
+      <fieldset class="approach-panel"><legend>Approches à comparer</legend><p class="field-hint">Exécution successive, dans l’ordre ci-dessous.</p>
+        <div class="choices">{% for key, info in approaches.items() %}<label class="choice"><input type="checkbox" name="approaches" value="{{ key }}" {% if key in options.approaches %}checked{% endif %}><span><strong>{{ info.title }}</strong><small>{{ info.subtitle }}</small></span><span class="choice-number">{{ info.symbol }}</span></label>{% endfor %}</div>
+      </fieldset>
+    </div>
+    <div class="settings-bar"><div class="compact-field"><label for="top_k">Résultats / approche</label><input id="top_k" name="top_k" type="number" min="1" max="50" required value="{{ options.top_k }}"></div><div class="compact-field model-field"><label for="model">Modèle LLM <span>· direct & RAG</span></label><input id="model" name="model" required value="{{ options.model }}"></div><div class="compact-field"><label for="retrieval_k">Voisins RAG</label><input id="retrieval_k" name="retrieval_k" type="number" min="1" max="200" required value="{{ options.retrieval_k }}"></div><button class="primary-button" type="submit" id="submit-button">Comparer les approches <span>→</span></button></div>
+    <details class="advanced"><summary>Paramètres avancés</summary><div class="advanced-fields"><label>Tokens de sortie max.<input name="max_output_tokens" type="number" min="1" required value="{{ options.max_output_tokens }}"></label><label>Timeout par appel (s)<input name="timeout" type="number" min="1" required value="{{ options.timeout }}"></label><label>Température (optionnelle)<input name="temperature" type="number" min="0" max="2" step="0.1" value="{{ options.temperature if options.temperature is not none else '' }}"></label><label>Effort de raisonnement<input name="reasoning_effort" value="{{ options.reasoning_effort or '' }}" placeholder="Valeur acceptée par le modèle"></label>{% if demo %}<label>Scénario de démo<select name="scenario"><option value="standard" {% if options.scenario == 'standard' %}selected{% endif %}>Résultats</option><option value="states" {% if options.scenario == 'states' %}selected{% endif %}>Informations manquantes / erreur / abstention</option></select></label>{% else %}<input type="hidden" name="scenario" value="standard">{% endif %}</div></details>
+  </form>
+  <div id="loading" hidden role="status" aria-live="polite"><span class="spinner"></span><div><strong>Comparaison en cours…</strong><p>Les approches sélectionnées s’exécutent l’une après l’autre. <span id="elapsed">0</span> s écoulées.</p></div></div>
+  {% if comparison %}
+  <section class="results" aria-labelledby="results-title"><div class="results-heading"><div><div class="eyebrow">RÉSULTATS DE LA COMPARAISON</div></h2></div>{% if comparison.get("saved", true) %}<a class="download" href="{{ url_for('download', run_id=comparison.run_id) }}">↓ Exporter le JSON</a>{% endif %}</div>
+    <div class="result-meta"><span>HS à 6 chiffres</span><span>Top {{ comparison.options.top_k }}</span><span>{{ 'Temps simulés' if comparison.demo else 'Temps total par approche · préparation + inférence' }}</span></div>
+    <div class="columns" style="--columns: {{ columns|length }}">
+    {% for column in columns %}<section class="result-column {{ column.approach }}" aria-label="Résultats {{ column.title }}"><header class="column-header"><div class="column-title"><span class="method-symbol">{{ column.symbol }}</span><h3>{{ column.title }}</h3><span class="status {{ column.prediction.status }}">{{ column.status_label }}</span></div><div class="model-name">{{ column.model }}</div><div class="column-stats"><span>{{ column.cards|length }} candidat{{ 's' if column.cards|length != 1 else '' }}</span><span class="duration">◷ <strong>{{ '%.2f'|format(column.duration) }} s</strong><span> au total</span></span></div></header>
+      {% if column.prediction.error %}<div class="state-card error"><span class="state-symbol">!</span><h4>Exécution interrompue</h4><p>{{ column.prediction.error.message }}</p><small>Les autres approches restent disponibles.</small></div>{% endif %}
+      {% if column.prediction.missing_information %}<div class="state-card needs-info"><h4>Quelques précisions nécessaires</h4><ul>{% for question in column.prediction.missing_information %}<li>{{ question }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if column.prediction.status == 'abstained' %}<div class="state-card"><span class="state-symbol">—</span><h4>Aucun classement proposé</h4><p>Les informations disponibles ne permettent pas de retenir un candidat.</p></div>{% endif %}
+      {% for card in column.cards %}<article class="candidate-card"><div class="card-top"><span class="rank">{{ '%02d'|format(card.candidate.rank) }}</span><span class="hs-code">{{ card.candidate.code }}</span><span class="code-label">HS 2022</span></div><h4>{{ card.candidate.description }}</h4>{% include card.template %}</article>{% endfor %}
+      {% set rejected = column.prediction.metadata.get('rejected_candidates', []) %}{% if rejected %}<details class="rejections"><summary>{{ rejected|length }} proposition(s) rejetée(s)</summary>{% for item in rejected %}<p>{{ item.code }} · {{ item.reason }}</p>{% endfor %}</details>{% endif %}
+    </section>{% endfor %}
+    </div>
+    <p class="score-note">Les scores cosinus mesurent une proximité de description, pas une probabilité de classement correct.</p>
+  </section>
+  {% else %}<section class="empty-state"><span class="empty-symbol">⇄</span><h2>Votre prochain classement commence ici.</h2><p>Saisissez une description et sélectionnez vos approches.<br>Leurs propositions apparaîtront dans des colonnes dédiées.</p></section>{% endif %}
+  <footer><span>HS LAB <span class="divider">/</span> Benchmark de correspondance produit</span><span>{{ 'Aucun appel API en mode démo' if demo else 'Référentiel HS 2022 · EN' }}</span></footer>
+</main>
+</body>
+</html>

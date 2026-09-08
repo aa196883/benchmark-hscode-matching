@@ -2,7 +2,7 @@
 
 Prototype Python pour proposer les **N codes HS les plus pertinents** à partir d’un nom de marchandise ou d’une description, puis comparer plusieurs approches sur les mêmes exemples. La priorité est la précision des résultats et la rapidité d’expérimentation.
 
-**État : prétraitement H6, approches LLM directe, embeddings et RAG, et CLI disponibles.** Les autres approches, l’évaluation et la GUI restent à implémenter. Les choix ci-dessous constituent la direction initiale du projet.
+**État : prétraitement H6, approches LLM directe, embeddings et RAG, CLI et GUI Flask disponibles.** La baseline lexicale et l’évaluation restent à implémenter. Les choix ci-dessous constituent la direction initiale du projet.
 
 ## Périmètre initial
 
@@ -216,3 +216,54 @@ Le LLM peut demander des informations (`needs_info`) ou s’abstenir si aucun ca
 Les runs enregistrent K et N, le manifeste de l’index, les candidats récupérés avec rang et cosinus, le vecteur et l’usage de la requête dans `metadata.retrieval`, le prompt exact, la réponse brute, l’usage du LLM et les durées de récupération et de génération. Une erreur du LLM conserve les candidats récupérés ; une erreur de récupération empêche l’appel du LLM. Un échec ne bloque pas les modèles suivants.
 
 Les tests RAG simulent les deux fournisseurs et vérifient aussi l’intégration CLI avec le véritable index cosinus local. Aucun appel OpenAI réel n’est exécuté par les tests.
+
+## Interface Flask
+
+Installer les dépendances puis lancer la GUI locale :
+
+```bash
+.venv/bin/python -m pip install -e '.[web]'
+.venv/bin/python -m hs_matching.web
+```
+
+Ouvrir **http://127.0.0.1:5000**. La commande installée `hs-matching-web` est équivalente. Options de lancement : `--port`, `--catalog`, `--index`, `--runs-dir`, `--env-file`. L’interface lit la même clé `.env` que la CLI ; elle ne crée jamais d’index automatiquement.
+
+Cocher une ou plusieurs approches : elles s’exécutent **successivement**, dans l’ordre LLM direct → Embeddings → RAG. Une erreur laisse les autres approches se poursuivre. Le formulaire permet de régler le nombre de résultats, le modèle LLM partagé par direct/RAG, les voisins RAG et les paramètres avancés. Le modèle de vectorisation reste celui du manifeste de l’index.
+
+Chaque approche sélectionnée dispose d’une colonne et de cartes avec rang, code et description. Les colonnes sont côte à côte sur desktop et empilées sur mobile. Chaque colonne affiche toujours son **temps total**, erreur comprise : préparation des ressources et exécution du moteur. Le temps de sauvegarde de la comparaison et le rendu HTML ne sont pas inclus. Le catalogue et l’index sont gardés en mémoire et rechargés lorsque leurs fichiers changent ; le coût du premier chargement est donc attribué à l’approche qui le déclenche.
+
+Un indicateur d’attente apparaît pendant l’exécution ; les colonnes de résultats sont affichées une fois toutes les approches terminées. Le JSON complet est sauvegardé dans `runs/web/` et téléchargeable depuis la page. Un rechargement de la page de résultats ne relance pas les modèles.
+
+### Rendus propres aux approches
+
+`web_presenters.py` contient le registre d’adaptateurs de présentation. Chaque adaptateur prépare les données et sélectionne un fragment Jinja dans `templates/cards/` :
+
+- `llm_direct.html` : explication du modèle ;
+- `embeddings.html` : score et indicateur de similarité cosinus ;
+- `rag.html` : explication du reclassement, rang et score de récupération initiaux.
+
+Le cadre des cartes reste partagé dans `templates/index.html`. Les textes utilisateur et les sorties des modèles sont échappés par Jinja. `web_runner.py` prépare les ressources et appelle `experiments.run_prediction`, le même moteur que la CLI. `web.py` gère les routes, la validation, l’exécution séquentielle et la sauvegarde ; aucun calcul de classement ne réside dans les templates.
+
+### Démo et captures reproductibles
+
+```bash
+.venv/bin/python -m hs_matching.web --demo
+```
+
+La démo ne lit pas la clé et n’appelle aucun fournisseur. `demo.py` contient les fixtures modifiables, marquées comme simulées dans l’interface et les exports. Les données affichées restent celles de la fixture T-shirts, quelle que soit la description saisie ; les temps sont également simulés. Dans « Paramètres avancés », le scénario alternatif affiche une demande de précisions, une erreur et une abstention. Les runs de démo vont dans `runs/demo/`.
+
+Pour créer les snapshots sans lancer de serveur manuellement :
+
+```bash
+.venv/bin/python -m pip install -e '.[web,visual]'
+PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python scripts/snapshot_web.py
+```
+
+Le script démarre un serveur de démo temporaire, soumet le formulaire dans Chromium, vérifie les trois colonnes et l’absence de débordement mobile, puis ferme le serveur. Il produit quatre captures dans `artifacts/screenshots/` : accueil desktop, comparaison desktop, comparaison mobile et états alternatifs. Les captures et les runs sont ignorés par Git.
+
+Les tests Flask couvrent sélection, exécution séquentielle, durée totale, isolation des erreurs, validation du formulaire, échappement HTML et export :
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
