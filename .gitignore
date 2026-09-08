@@ -1,0 +1,41 @@
+# Secrets et configuration locale (seul le modèle est versionné)
+.env
+.env.*
+!.env.example
+
+# Données brutes ou préparées, résultats et index générés
+# Ces répertoires sont ignorés à tous les niveaux du projet.
+data/
+runs/
+artifacts/
+# Référentiel brut lorsqu'il est placé à la racine
+/H6.json
+
+# Environnements et caches Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Construction et installation du package
+*.egg-info/
+build/
+dist/
+
+# Couverture et journaux d'exécution
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.log
+
+# Fichiers temporaires des éditeurs et du système
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

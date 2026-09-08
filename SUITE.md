@@ -1,10 +1,10 @@
 # Préparation et prochaines étapes
 
-Ce document complète le README avec les informations à collecter et les décisions nécessaires à l’implémentation. Sources consultées le **8 septembre 2026** ; aucun corpus n’a encore été importé.
+Ce document complète le README avec les informations à collecter et les décisions nécessaires à l’implémentation. Sources consultées le **8 septembre 2026** ; le premier import local H6 est disponible via `scripts/preprocess_h6.py`, avec exports dans `data/processed/h6_2022/`. Les contrôles structurels sont implémentés ; la comparaison exhaustive avec l’OMD reste à réaliser.
 
 ## 1. Constituer le référentiel
 
-Premier choix proposé : **HS 2022 à 6 chiffres**, catalogue anglais et requêtes FR/EN. Ajouter les libellés français après identification d’une source adaptée. Garder l’édition explicite : les [tables OMD 2022–2028](https://www.wcoomd.org/en/topics/nomenclature/instrument-and-tools/hs-nomenclature-2028-edition/correlation-tables-hs-2022-2028.aspx) comportent notamment des correspondances partielles ; une migration ne se réduit pas à renommer des codes.
+Premier choix proposé : **HS 2022 à 6 chiffres**, catalogue anglais et requêtes EN. Garder l’édition explicite : les [tables OMD 2022–2028](https://www.wcoomd.org/en/topics/nomenclature/instrument-and-tools/hs-nomenclature-2028-edition/correlation-tables-hs-2022-2028.aspx) comportent notamment des correspondances partielles ; une migration ne se réduit pas à renommer des codes.
 
 | Source | Ce qui est disponible ou à examiner | Usage proposé |
 | --- | --- | --- |
@@ -19,24 +19,7 @@ Pour chaque source retenue, relever : URL de téléchargement, édition, date de
 
 **Premier import concret :** utiliser `results` du JSON H6, conserver les lignes aux niveaux 2, 4 et 6, convertir les parents de premier niveau en racines, exclure `TOTAL` des candidats. Contrôler les éventuels codes spéciaux et la couverture contre la nomenclature OMD ; ne pas supposer que toute feuille statistique est une sous-position HS admissible. Préserver le fichier brut et le texte source avant nettoyage.
 
-## 2. Conserver table et hiérarchie
-
-Une table de nœuds suffit au départ. Clé : `(nomenclature, edition, node_id, language)` ; un nœud sans code, tel qu’un intertitre, reçoit un identifiant interne.
-
-| Champ | Rôle |
-| --- | --- |
-| `nomenclature`, `edition`, `jurisdiction` | Exemple : HS, 2022, international. |
-| `node_id`, `parent_id`, `code` | Liens explicites ; code sous forme de chaîne, éventuellement nul pour un intertitre. |
-| `level`, `is_predictable` | Section, chapitre, position, sous-position ou intertitre ; seuls les HS6 admissibles sont prédictibles au départ. |
-| `description`, `language` | Libellé source et langue. |
-| `path_text` | Texte dérivé des ancêtres et du libellé, destiné à la recherche. |
-| `source_id`, `valid_from`, `valid_to` | Provenance et validité lorsqu’elles sont disponibles. |
-
-La hiérarchie 2/4/6 du JSON est un point de départ. Ajouter les sections et les intertitres de sous-positions si une source plus riche les fournit : les préfixes numériques ne restituent pas tout le contexte. Contrôler unicité, parents existants, absence de cycles et zéros initiaux.
-
-Stocker les notes et règles dans des documents séparés (`document_id`, type, texte, langue, édition, source), reliés aux nœuds concernés. Distinguer libellés, notes légales, notes explicatives et enrichissements générés. Le texte d’indexation combine le chemin et le libellé ; l’ajout de notes sera une variante expérimentale traçable.
-
-## 3. Rendre les expériences comparables
+## 2. Rendre les expériences comparables
 
 - Une configuration identifie l’approche, les modèles, les paramètres, la langue, le catalogue, le prompt et les tailles K de recherche et N de sortie. La CLI et Flask utilisent le même moteur d’exécution.
 - Chaque candidat expose `code`, `rank`, `description`, `score` nullable, `score_type`, `explanation` optionnelle et références documentaires éventuelles. Le résultat porte aussi `status` (`ok`, `needs_info`, `abstained`, `error`) et les informations manquantes.
@@ -49,11 +32,9 @@ Stocker les notes et règles dans des documents séparés (`document_id`, type, 
 
 Le catalogue décrit les catégories ; il ne fournit pas à lui seul un benchmark de descriptions commerciales annotées. Rechercher d’abord des exemples métier validés, puis des décisions de classement publiques avec description exploitable, édition et provenance identifiables. Documenter les conditions d’accès et la qualité de chaque source.
 
-Commencer par **100 à 300 exemples relus**, couvrant plusieurs chapitres, FR/EN, descriptions courtes, détaillées et ambiguës. Stocker `example_id`, `product_group_id`, `text`, `language`, `edition`, `expected_codes`, `answerability`, provenance et commentaire d’annotation. Plusieurs codes acceptables doivent être justifiés par l’annotation ; une liste de possibilités issue d’un texte trop vague ne constitue pas automatiquement une vérité terrain.
+Commencer par **100 à 300 exemples relus**, couvrant plusieurs chapitres, descriptions courtes, détaillées et ambiguës. Stocker `example_id`, `product_group_id`, `text`, `edition`, `expected_codes`, `answerability`, provenance et commentaire d’annotation. Plusieurs codes acceptables doivent être justifiés par l’annotation ; une liste de possibilités issue d’un texte trop vague ne constitue pas automatiquement une vérité terrain.
 
-Séparer entraînement, développement et test par produit ou famille proche ; garder les variantes, traductions et paraphrases d’un même produit dans le même lot. Les exemples synthétiques peuvent servir à l’entraînement ou aux vérifications, mais ne doivent pas constituer seuls le test de précision. Exclure les annotations du test des exemples de prompt et des documents de récupération.
-
-Mesures initiales sur les cas classables : **Hit@1/3/5** (au moins un code acceptable présent) et **MRR** (rang du premier code acceptable). Si plusieurs codes doivent réellement être retrouvés, ajouter Precision@k et Recall@k. Rapporter séparément les résultats aux niveaux 2/4/6, par langue et type de description, ainsi que le taux de codes invalides et d’erreurs. Pour le RAG, mesurer le rappel des candidats avant génération. Pour l’abstention, afficher couverture et précision sur les réponses émises, puis vérifier les demandes d’information sur les cas ambigus. Garder les échecs dans les dénominateurs appropriés et publier les effectifs.
+Mesures initiales sur les cas classables : **Hit@1/3/5** (au moins un code acceptable présent) et **MRR** (rang du premier code acceptable). Si plusieurs codes doivent réellement être retrouvés, ajouter Precision@k et Recall@k. Rapporter séparément les résultats aux niveaux 2/4/6, par type de description, ainsi que le taux de codes invalides et d’erreurs. Pour le RAG, mesurer le rappel des candidats avant génération. Pour l’abstention, afficher couverture et précision sur les réponses émises, puis vérifier les demandes d’information sur les cas ambigus. Garder les échecs dans les dénominateurs appropriés et publier les effectifs.
 
 ## 5. Ordre d’implémentation
 
@@ -66,4 +47,4 @@ Mesures initiales sur les cas classables : **Hit@1/3/5** (au moins un code accep
 
 Le premier jalon est atteint lorsque les trois approches demandées et la baseline tournent sur les mêmes exemples, via CLI et GUI, avec validation des codes et rapport comparatif enregistré.
 
-Décisions à confirmer avant d’élargir : secteurs prioritaires, disponibilité des annotations métier, besoin de libellés français officiels, budget par campagne et éventuelle cible nationale/UE. Ces choix ne bloquent pas le démarrage proposé en HS6/2022.
+Décisions à confirmer avant d’élargir : secteurs prioritaires, disponibilité des annotations métier, besoin de libellés français officiels.
