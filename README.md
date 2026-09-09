@@ -80,7 +80,7 @@ Conserver une **table avec liens parent-enfant**, qui permet de reconstruire l�
 
 Comparer les méthodes sur un jeu annoté indépendant : réussite top-1/top-3/top-5, MRR, codes invalides, abstentions, latence et coût. Conserver les versions des données, modèles, prompts, paramètres et résultats bruts de chaque exécution.
 
-La préparation des données, l’entraînement éventuel et leurs artefacts font partie du projet. Les détails des sources, du schéma et de l’ordre d’implémentation sont dans [SUITE.md](SUITE.md).
+Deux pistes de développement sont décrites dans [PISTES.md](PISTES.md) : une quatrième approche RAG suivant la hiérarchie chapitre → position → sous-position, et une meilleure détection des informations manquantes pour départager les candidats.
 
 ## Prétraitement H6
 
