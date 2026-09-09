@@ -2,45 +2,78 @@
 
 Prototype Python pour proposer les **N codes HS les plus pertinents** à partir d’un nom de marchandise ou d’une description, puis comparer plusieurs approches sur les mêmes exemples. La priorité est la précision des résultats et la rapidité d’expérimentation.
 
-**État : prétraitement H6, approches LLM directe, embeddings et RAG, CLI et GUI Flask disponibles.** La baseline lexicale et l’évaluation restent à implémenter. Les choix ci-dessous constituent la direction initiale du projet.
+**État : prétraitement H6, approches LLM directe, embeddings et RAG, CLI et GUI Flask disponibles.** La baseline lexicale et l’évaluation restent à implémenter. Les sections ci-dessous décrivent l’installation, l’architecture et les commandes disponibles.
 
-## Périmètre initial
+## Installation sous Linux
+
+Python **3.10+** est requis. Depuis la racine du dépôt, créer puis activer un environnement virtuel :
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+Sur Debian/Ubuntu, si la création du venv échoue faute du module correspondant, installer `python3-venv` avec `sudo apt install python3-venv`, puis recommencer.
+
+**Toutes les commandes ci-dessous s’exécutent depuis la racine du dépôt, avec le venv activé.** Dans un nouveau terminal, relancer `source .venv/bin/activate`. `python3` utilise alors l’interpréteur du venv. Pour quitter cet environnement : `deactivate`.
+
+`requirements.txt` contient les dépendances directes de l’application (Flask et NumPy), avec les mêmes plages de versions que `pyproject.toml`. `requirements-dev.txt` ajoute Playwright pour les captures navigateur ; les tests unitaires utilisent `unittest`. Ces fichiers ne sont pas un verrouillage exhaustif des versions transitives.
+
+Configurer `OPENAI_API_KEY` dans `.env` pour les appels réels. Si ce fichier n’existe pas, le créer à partir de `.env.example` ; ne pas écraser une clé déjà renseignée. Le mode démo fonctionne sans clé ni données locales.
+
+## Périmètre
 
 - Entrées en anglais ; description libre.
 - Cible : HS international à **6 chiffres**, édition **2022**.
 - Sortie : candidats ordonnés, libellés du référentiel, scores propres à l’approche, justification si disponible et informations manquantes. Une description insuffisante peut conduire à une abstention.
-- CLI pour rechercher, comparer et évaluer ; GUI Flask pour saisir une description et afficher les résultats côte à côte.
+- CLI pour rechercher et comparer les modèles ; GUI Flask pour comparer les approches côte à côte. L’évaluation sur jeu annoté reste à implémenter.
 - OpenAI comme premier fournisseur pour les approches LLM et embeddings ; clé via `OPENAI_API_KEY`, modèles et paramètres configurables.
 
 ## Approches à comparer
 
 | Approche | Principe |
 | --- | --- |
-| Lexicale | Baseline TF-IDF ou BM25 sur les descriptions HS contextualisées. |
+| Lexicale (à venir) | Baseline TF-IDF ou BM25 sur les descriptions HS contextualisées. |
 | Embeddings | Vectoriser les descriptions HS et la requête, puis classer par similarité cosinus. |
 | LLM direct | Demander les N codes au LLM, sans lui fournir de documents, puis contrôler leur existence dans l’édition choisie. |
 | RAG | Rechercher K candidats, fournir leurs descriptions et leur contexte hiérarchique au LLM, puis lui faire sélectionner et ordonner au plus N codes parmi ces candidats. |
 
 Les approches partagent un contrat `predict(query, top_k, context) -> Prediction`. Un registre permet de sélectionner une ou plusieurs approches par configuration. `Prediction` contient les candidats, le statut, les informations manquantes et les métadonnées d’exécution ; les erreurs d’un modèle restent visibles sans bloquer toute la comparaison. Un score de similarité ou un score fourni par un LLM n’est pas une probabilité de justesse comparable entre modèles.
 
-## Organisation prévue
+## Architecture du projet
 
-Un seul package Python, appelé directement par la CLI et Flask ; pas de service intermédiaire ni de frontend séparé.
+Le package `hs_matching` contient le moteur partagé par la CLI et Flask. Les approches implémentent le même contrat de prédiction ; les appels aux fournisseurs, la recherche vectorielle et le rendu HTML sont isolés dans leurs modules. Le précalcul reste une étape explicite, distincte de l’inférence.
 
 ```text
 hs_matching/
-  catalog.py       # import, hiérarchie et validation des codes
-  approaches/      # contrat commun, registre et adaptateurs
-  experiments.py   # préparation, évaluation et sauvegarde des runs
-  cli.py
-  web.py
-  templates/
-data/              # sources brutes, catalogue normalisé, jeux annotés
-artifacts/         # embeddings, index et éventuels modèles entraînés
-runs/              # configurations, prédictions et métriques
+  approaches/       # contrat, registre, LLM direct, embeddings et RAG
+  providers/        # transport de génération OpenAI
+  vectorization/    # interface de vectorisation et adaptateur OpenAI
+  catalog.py        # lecture du catalogue et validation des codes
+  embedding_index.py # précalcul, chargement de l’index et recherche cosinus
+  experiments.py    # exécution des modèles et sauvegarde des runs
+  config.py         # chargement du fichier .env
+  cli.py            # commandes de prédiction et liste des approches
+  web.py            # application Flask, routes et comparaisons séquentielles
+  web_runner.py     # ressources en mémoire et appel du moteur commun
+  web_presenters.py # adaptateurs de présentation par approche
+  demo.py           # résultats simulés pour la GUI
+  templates/        # page Jinja et cartes propres aux approches
+  static/           # styles CSS et interactions JavaScript
+scripts/            # prétraitement H6, précalcul embeddings et captures GUI
+tests/              # tests unitaires et d’intégration hors API
+data/               # données brutes et catalogue préparé (ignorés par Git)
+artifacts/          # vecteurs JSONL, manifestes et captures (ignorés par Git)
+runs/               # prédictions, traces et comparaisons (ignorés par Git)
+requirements.txt    # dépendances de l’application
+requirements-dev.txt # dépendances supplémentaires pour les captures
+pyproject.toml      # métadonnées du package et installation facultative
 ```
 
-Commencer avec des fichiers JSONL/CSV, des matrices NumPy et une recherche exacte en mémoire. Ajouter SQLite ou un index spécialisé lorsqu’un besoin mesuré le justifie. Séparer la préparation des artefacts de l’inférence ; une approche entraînable pourra ajouter une étape `fit` sans changer le contrat de prédiction.
+Les données et les résultats sont stockés en JSON/JSONL. L’index lisible code–vecteur est chargé dans une matrice NumPy pour la recherche cosinus exacte ; il est partagé par les approches embeddings et RAG. La GUI utilise Flask/Jinja, sans service intermédiaire ni frontend séparé.
+
+Le dossier `*.egg-info` est généré par les outils d’installation Python : il décrit le package, ses dépendances et ses commandes. Il ne contient pas de code métier et n’est pas nécessaire au fonctionnement depuis le dépôt. Il reste ignoré par Git et peut réapparaître lors d’une installation du package avec pip.
 
 ## Données et évaluation
 
@@ -52,14 +85,14 @@ La préparation des données, l’entraînement éventuel et leurs artefacts fon
 
 ## Prétraitement H6
 
-Depuis la racine, avec Python 3 sans dépendance externe :
+Le prétraitement utilise uniquement la bibliothèque standard. Avec la source brute placée dans `data/H6.json` :
 
 ```bash
-python3 scripts/preprocess_h6.py
+python3 scripts/preprocess_h6.py --input data/H6.json
 python3 -m unittest discover -s tests
 ```
 
-`H6.json` reste intact. Les exports dans `data/processed/h6_2022/` sont :
+`data/H6.json` reste intact. Les exports dans `data/processed/h6_2022/` sont :
 
 - `catalog.jsonl` : 6 939 nœuds avec parents, champs source intacts, codes ancêtres et descriptions contextualisées ;
 - `candidates.jsonl` : 5 612 candidats à six chiffres ;
@@ -74,7 +107,7 @@ Les doublons, formats invalides, parents incohérents et feuilles incohérentes 
 
 ## Approche LLM directe et CLI
 
-Python **3.10+**, sans dépendance d’exécution pour le LLM direct. La recherche par embeddings utilise NumPy (installation ci-dessous). Depuis la racine :
+Après l’installation commune ci-dessus :
 
 1. Remplacer `YOUR_OPENAI_API_KEY_HERE` dans `.env` par la clé OpenAI. Le fichier est ignoré par Git ; `.env.example` sert de modèle.
 2. Lancer une prédiction avec une description anglaise :
@@ -115,19 +148,12 @@ Les tests simulent le fournisseur et le transport HTTP ; ils ne consomment aucun
 
 L’approche `embeddings` vectorise exclusivement **`contextual_description` de `candidates.jsonl`** au précalcul. À l’inférence, elle vectorise uniquement la description utilisateur, puis classe les candidats par similarité cosinus. Aucun appel de génération LLM n’est nécessaire.
 
-### Installation
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[embeddings]'
-```
-
-NumPy est utilisé pour la recherche matricielle en mémoire. Le précalcul lui-même utilise uniquement la bibliothèque standard. La clé est lue dans `.env` ou dans `OPENAI_API_KEY` déjà défini dans l’environnement.
+NumPy, installé via `requirements.txt`, assure la recherche matricielle en mémoire. Le précalcul lui-même utilise uniquement la bibliothèque standard. La clé est lue dans `.env` ou dans `OPENAI_API_KEY` déjà défini dans l’environnement.
 
 ### 1. Précalcul explicite
 
 ```bash
-.venv/bin/python scripts/build_embeddings.py \
+python3 scripts/build_embeddings.py \
   --input data/processed/h6_2022/candidates.jsonl \
   --output-dir artifacts/embeddings/h6_2022 \
   --model text-embedding-3-small
@@ -153,7 +179,7 @@ Les fichiers s’ouvrent dans un éditeur de texte ou se lisent ligne par ligne 
 ### 2. Recherche
 
 ```bash
-.venv/bin/python -m hs_matching predict "Live purebred breeding horses" \
+python3 -m hs_matching predict "Live purebred breeding horses" \
   --approach embeddings \
   --index artifacts/embeddings/h6_2022 \
   --top-k 5
@@ -177,7 +203,7 @@ Le RAG réutilise le même `EmbeddingRetriever`, demande K voisins, puis fournit
 Les runs embeddings conservent le manifeste, l’empreinte du catalogue, le vecteur de requête, les tokens, les scores et les durées. Le chargement de l’index est effectué avant la prédiction ; sa durée n’est pas incluse dans celle de la recherche.
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
 
 Les tests de précalcul, de classement cosinus, de compatibilité, d’intégrité et de CLI utilisent des vecteurs simulés. Ils ne lancent aucun appel payant.
@@ -187,7 +213,7 @@ Les tests de précalcul, de classement cosinus, de compatibilité, d’intégrit
 L’approche `rag` utilise l’index déjà précalculé par `scripts/build_embeddings.py`. Elle réutilise `EmbeddingRetriever` et le module `vectorization` pour vectoriser la requête avec le même modèle que les descriptions du catalogue. Aucun nouveau précalcul n’est nécessaire.
 
 ```bash
-.venv/bin/python -m hs_matching predict "Live purebred breeding horses" \
+python3 -m hs_matching predict "Live purebred breeding horses" \
   --approach rag \
   --index artifacts/embeddings/h6_2022 \
   --retrieval-k 20 \
@@ -219,14 +245,13 @@ Les tests RAG simulent les deux fournisseurs et vérifient aussi l’intégratio
 
 ## Interface Flask
 
-Installer les dépendances puis lancer la GUI locale :
+Après l’installation commune, lancer la GUI locale :
 
 ```bash
-.venv/bin/python -m pip install -e '.[web]'
-.venv/bin/python -m hs_matching.web
+python3 -m hs_matching.web
 ```
 
-Ouvrir **http://127.0.0.1:5000**. La commande installée `hs-matching-web` est équivalente. Options de lancement : `--port`, `--catalog`, `--index`, `--runs-dir`, `--env-file`. L’interface lit la même clé `.env` que la CLI ; elle ne crée jamais d’index automatiquement.
+Ouvrir **http://127.0.0.1:5000**. Après une installation facultative du package, la commande `hs-matching-web` est équivalente. Options de lancement : `--port`, `--catalog`, `--index`, `--runs-dir`, `--env-file`. L’interface lit la même clé `.env` que la CLI ; elle ne crée jamais d’index automatiquement.
 
 Cocher une ou plusieurs approches : elles s’exécutent **successivement**, dans l’ordre LLM direct → Embeddings → RAG. Une erreur laisse les autres approches se poursuivre. Le formulaire permet de régler le nombre de résultats, le modèle LLM partagé par direct/RAG, les voisins RAG et les paramètres avancés. Le modèle de vectorisation reste celui du manifeste de l’index.
 
@@ -247,7 +272,7 @@ Le cadre des cartes reste partagé dans `templates/index.html`. Les textes utili
 ### Démo et captures reproductibles
 
 ```bash
-.venv/bin/python -m hs_matching.web --demo
+python3 -m hs_matching.web --demo
 ```
 
 La démo ne lit pas la clé et n’appelle aucun fournisseur. `demo.py` contient les fixtures modifiables, marquées comme simulées dans l’interface et les exports. Les données affichées restent celles de la fixture T-shirts, quelle que soit la description saisie ; les temps sont également simulés. Dans « Paramètres avancés », le scénario alternatif affiche une demande de précisions, une erreur et une abstention. Les runs de démo vont dans `runs/demo/`.
@@ -255,9 +280,9 @@ La démo ne lit pas la clé et n’appelle aucun fournisseur. `demo.py` contient
 Pour créer les snapshots sans lancer de serveur manuellement :
 
 ```bash
-.venv/bin/python -m pip install -e '.[web,visual]'
-PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python -m playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python scripts/snapshot_web.py
+python3 -m pip install -r requirements-dev.txt
+PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright python3 -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright python3 scripts/snapshot_web.py
 ```
 
 Le script démarre un serveur de démo temporaire, soumet le formulaire dans Chromium, vérifie les trois colonnes et l’absence de débordement mobile, puis ferme le serveur. Il produit quatre captures dans `artifacts/screenshots/` : accueil desktop, comparaison desktop, comparaison mobile et états alternatifs. Les captures et les runs sont ignorés par Git.
@@ -265,5 +290,5 @@ Le script démarre un serveur de démo temporaire, soumet le formulaire dans Chr
 Les tests Flask couvrent sélection, exécution séquentielle, durée totale, isolation des erreurs, validation du formulaire, échappement HTML et export :
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
