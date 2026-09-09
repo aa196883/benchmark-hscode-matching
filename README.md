@@ -34,7 +34,6 @@ Configurer `OPENAI_API_KEY` dans `.env` pour les appels réels. Si ce fichier n�
 
 | Approche | Principe |
 | --- | --- |
-| Lexicale (à venir) | Baseline TF-IDF ou BM25 sur les descriptions HS contextualisées. |
 | Embeddings | Vectoriser les descriptions HS et la requête, puis classer par similarité cosinus. |
 | LLM direct | Demander les N codes au LLM, sans lui fournir de documents, puis contrôler leur existence dans l’édition choisie. |
 | RAG | Rechercher K candidats, fournir leurs descriptions et leur contexte hiérarchique au LLM, puis lui faire sélectionner et ordonner au plus N codes parmi ces candidats. |
