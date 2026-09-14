@@ -1,5 +1,7 @@
 """Tests de collecte hors réseau : python -m unittest discover -s benchmark -t .."""
 import json
+import io
+from contextlib import redirect_stderr
 from pathlib import Path
 import tempfile
 import unittest
@@ -41,7 +43,7 @@ class BenchmarkTests(unittest.TestCase):
             trace.append({'answer': answer})
             self.assertEqual(json.loads(path.read_text())['results'][-1]['answer'], answer)
 
-    def test_all_approaches_keep_complete_answers_and_continue_after_error(self):
+    def test_all_approaches_omit_metadata_and_continue_after_error(self):
         for name in ('llm_direct', 'embeddings', 'rag'):
             with self.subTest(approach=name):
                 runs = self.root / name
@@ -59,10 +61,33 @@ class BenchmarkTests(unittest.TestCase):
                 self.assertEqual(len(run['results']), 2)
                 self.assertEqual(run['results'][0]['ground_truth'], '010121')
                 self.assertEqual(run['results'][0]['answer']['status'], 'error')
-                self.assertEqual(run['results'][1]['answer'], prediction.to_dict())
+                expected = prediction.to_dict()
+                expected.pop('metadata')
+                self.assertEqual(run['results'][1]['answer'], expected)
+                self.assertTrue(all('metadata' not in row['answer'] for row in run['results']))
+                self.assertNotIn('raw_response', run['results'][1]['answer'])
+                self.assertEqual(prediction.metadata['raw_response'], raw)
                 self.assertGreaterEqual(run['results'][1]['response_time'], 0)
                 if name == 'embeddings':
                     self.assertEqual(run['model'], '')
+
+    def test_progress_in_terminal_and_script_logs(self):
+        for terminal in (False, True):
+            with self.subTest(terminal=terminal):
+                output = io.StringIO()
+                output.isatty = lambda: terminal
+                approach = Mock()
+                approach.predict.return_value = Prediction(status='abstained')
+                with redirect_stderr(output), patch('benchmark.benchmark.build_approach', return_value=(approach, None)):
+                    result = main(['--datasets', str(self.dataset), '--approach', 'rag', '--model', 'qwen3',
+                                   '--runs-dir', str(self.root / 'runs')])
+                self.assertEqual(result, 0)
+                text = output.getvalue()
+                for count in ('0/2', '1/2', '2/2'):
+                    self.assertIn(count, text)
+                self.assertIn(f'model=qwen3 | approach=rag | dataset={self.dataset}', text)
+                self.assertEqual('\r' in text, terminal)
+                self.assertTrue(text.endswith('\n'))
 
     def test_multiple_datasets_and_interruption(self):
         approach = Mock()

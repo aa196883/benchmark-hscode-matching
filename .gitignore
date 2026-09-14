@@ -44,3 +44,7 @@ Thumbs.db
 /benchmark/**
 !/benchmark/**/
 !/benchmark/**/*.py
+
+
+# Scripts
+script.sh

@@ -1,4 +1,4 @@
-"""CLI autonome de collecte des prédictions, sans calcul de métriques."""
+"""CLI de collecte des prédictions et d’analyse des runs de benchmark."""
 import argparse
 import csv
 from datetime import datetime, timezone
@@ -76,6 +76,25 @@ class Trace:
         self.stream.close()
 
 
+class Progress:
+    """Barre en terminal ; lignes autonomes pour les logs des scripts."""
+    def __init__(self, model, approach, dataset, total):
+        self.label = f'model={model or "(index)"} | approach={approach} | dataset={dataset}'
+        self.total = total
+        self.terminal = sys.stderr.isatty()
+
+    def update(self, completed):
+        filled = 20 * completed // self.total
+        bar = '[' + '#' * filled + '-' * (20 - filled) + '] '
+        text = f'{self.label} | {bar if self.terminal else ""}{completed}/{self.total}'
+        print(('\r' if self.terminal else '') + text,
+              end='' if self.terminal else '\n', file=sys.stderr, flush=True)
+
+    def close(self):
+        if self.terminal:
+            print(file=sys.stderr, flush=True)
+
+
 def build_approach(args):
     context = PredictionContext(Catalog(args.catalog))
     dependencies = {}
@@ -103,7 +122,7 @@ def build_approach(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--datasets', nargs='+', default=[str(DEFAULT_DATASET)])
-    parser.add_argument('--approach', required=True, choices=sorted(REGISTRY))
+    parser.add_argument('--approach', choices=sorted(REGISTRY))
     parser.add_argument('--model', help='Modèle OpenAI ou qwen3 ; vide pour embeddings')
     parser.add_argument('--top-k', type=int, default=5)
     parser.add_argument('--retrieval-k', type=int)
@@ -115,7 +134,25 @@ def main(argv=None):
     parser.add_argument('--reasoning-effort')
     parser.add_argument('--timeout', type=float, default=60.0)
     parser.add_argument('--runs-dir', default='benchmark/runs')
+    parser.add_argument('--process-runs', action='store_true', help='Analyser les runs existants sans inférence')
+    parser.add_argument('--runs', nargs='+', help='Fichiers JSON ou motifs glob à regrouper')
+    parser.add_argument('--output', default='benchmark/report.md', help='Rapport Markdown (mode --process-runs)')
     args = parser.parse_args(argv)
+    if args.process_runs:
+        if not args.runs:
+            parser.error('--runs est requis avec --process-runs')
+        from benchmark.process_runs import process_runs
+        try:
+            path = process_runs(args.runs, args.output)
+        except (OSError, ValueError) as exc:
+            print(f'Erreur : {exc}', file=sys.stderr)
+            return 2
+        print(f'Rapport : {path}', file=sys.stderr)
+        return 0
+    if args.runs:
+        parser.error('--runs nécessite --process-runs')
+    if args.approach is None:
+        parser.error('--approach est requis pour lancer un benchmark')
     traces = []
     failed = False
     try:
@@ -154,17 +191,26 @@ def main(argv=None):
             traces.append((trace, rows))
             print(f'Trace : {path}', file=sys.stderr)
         approach, context = build_approach(args)
-        for trace, rows in traces:
-            for code, description in rows:
-                start = perf_counter()
-                try:
-                    answer = approach.predict(description, args.top_k, context).to_dict()
-                except Exception as exc:
-                    answer = Prediction(status='error', error={'kind': type(exc).__name__,
-                                        'message': 'Erreur interne pendant la prédiction.'}).to_dict()
-                elapsed = perf_counter() - start
-                trace.append(dict(response_time=elapsed, ground_truth=code, description=description, answer=answer))
-                failed |= answer.get('status') == 'error'
+        for (dataset, _), (trace, rows) in zip(datasets, traces):
+            progress = Progress(args.model, args.approach, dataset, len(rows))
+            progress.update(0)
+            try:
+                for code, description in rows:
+                    start = perf_counter()
+                    try:
+                        answer = approach.predict(description, args.top_k, context).to_dict()
+                    except Exception as exc:
+                        answer = Prediction(status='error', error={'kind': type(exc).__name__,
+                                            'message': 'Erreur interne pendant la prédiction.'}).to_dict()
+                    elapsed = perf_counter() - start
+                    answer.pop('metadata', None)
+                    if args.approach == 'llm_direct':
+                        answer.pop('raw_response', None)
+                    trace.append(dict(response_time=elapsed, ground_truth=code, description=description, answer=answer))
+                    failed |= answer.get('status') == 'error'
+                    progress.update(trace.count)
+            finally:
+                progress.close()
     except KeyboardInterrupt:
         print('Benchmark interrompu ; résultats déjà collectés conservés.', file=sys.stderr)
         return 130

@@ -402,7 +402,6 @@ après chaque résultat sauvegardé. Exemple de structure abrégée :
         "status": "abstained",
         "candidates": [],
         "missing_information": [],
-        "metadata": {},
         "error": null
       }
     }
@@ -412,14 +411,21 @@ après chaque résultat sauvegardé. Exemple de structure abrégée :
 
 `response_time` mesure en secondes l'appel complet à l'approche pour la ligne,
 retrieval inclus, hors initialisation et écriture du fichier. `answer` conserve
-l'objet complet renvoyé par l'approche : candidats, scores éventuels, erreurs et
-métadonnées, dont la réponse brute du fournisseur LLM (`metadata.raw_response`)
-et les candidats récupérés en RAG lorsqu'ils sont disponibles. La validation
-interne des approches existantes s'applique toujours ; le benchmark n'ajoute aucun
-filtrage, transformation des réponses ou calcul de métriques. Les paramètres
-applicables figurent aussi à la racine du JSON, ainsi que `created_at` et
-`dataset_size`. Pour `embeddings`, l'attribut racine `model` vaut `""` et la
-configuration effective de vectorisation figure dans les métadonnées des réponses.
+le statut, les candidats et leurs scores éventuels, les informations manquantes
+et les erreurs. Les métadonnées des réponses sont supprimées pour toutes les
+approches, y compris les réponses brutes LLM qu'elles contenaient. Le champ
+`raw_response` est également exclu de `answer` pour `llm_direct`.
+La validation interne des approches existantes s'applique toujours ; aucune
+métrique n'est calculée. Tous les attributs à la racine du JSON sont conservés,
+notamment les paramètres applicables, `created_at` et `dataset_size`.
+Pour `embeddings`, l'attribut racine `model` vaut `""` et `index` indique l'index utilisé.
+
+La progression est affichée sur stderr avec le modèle, l'approche, le chemin du
+dataset et le compteur `fini/total`, dès `0/total` puis après chaque résultat
+sauvegardé (erreurs incluses). Dans un terminal, une barre est actualisée sur la
+même ligne. Lors d'une redirection vers un fichier ou un pipe, chaque mise à jour
+occupe une ligne autonome, adaptée aux lancements successifs par script.
+Pour `embeddings`, le modèle est affiché comme `(index)`.
 
 Une erreur de prédiction est enregistrée et les lignes suivantes sont traitées.
 Une interruption conserve les résultats déjà écrits ; comparer leur nombre à
@@ -432,3 +438,42 @@ Tests hors réseau sur un petit CSV temporaire :
 ```bash
 python -m unittest discover -s benchmark -t . -p 'test_*.py'
 ```
+
+### Analyser plusieurs runs
+
+```bash
+python benchmark/benchmark.py --process-runs --runs benchmark/runs/* --output benchmark/report.md
+```
+
+Ce mode n'effectue aucune inférence et ne nécessite ni clé API, ni catalogue,
+ni index. `--runs` accepte plusieurs fichiers ou motifs glob (également entre
+ guillemets). `--output` vaut `benchmark/report.md` par défaut ; le rapport existant
+est remplacé après validation des entrées.
+
+Une première passe regroupe les fichiers par valeurs exactes de `model` et
+`approach`, quels que soient les datasets et les autres paramètres (`top_k`,
+`retrieval_k`, index, etc.). Le même chemin fourni plusieurs fois n'est lu qu'une
+fois. Des runs distincts comptent chacun, même s'ils portent sur le même dataset.
+Pour comparer des configurations différentes séparément, produire des rapports
+avec des sélections de fichiers différentes.
+
+Le Markdown contient uniquement une table : une colonne identifie le couple
+modèle / approche, suivie des quatre colonnes de résultats demandées :
+
+- Chapitre : au moins un candidat partage les deux premiers chiffres du code attendu.
+- Position : au moins un candidat partage les quatre premiers chiffres.
+- Sous-position : au moins un candidat partage les six chiffres.
+- Temps moyen : moyenne de `response_time`, en secondes par élément, erreurs incluses.
+
+Tous les candidats des statuts `ok` et `needs_info` sont examinés, pas seulement
+le premier. Une liste vide, une abstention ou une erreur vaut une non-correspondance
+aux trois niveaux. Un code candidat mal formé ne correspond à aucun niveau.
+Chaque élément contribue au plus une réussite par niveau, même si plusieurs
+candidats correspondent. Les fractions sont affichées sous la forme `réussites/total`
+avec le pourcentage. Les sommes sont calculées sur toutes les lignes regroupées,
+sans faire la moyenne des pourcentages par fichier.
+
+Les runs partiels sont signalés sur stderr et seuls les résultats présents sont
+analysés. Un groupe vide affiche `N/A`. Les vérités terrain et durées manquantes
+ou invalides provoquent une erreur explicite avant l'écriture du rapport.
+Le modèle vide des embeddings est affiché comme `(sans modèle)`.
