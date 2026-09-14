@@ -39,3 +39,8 @@ coverage.xml
 *~
 .DS_Store
 Thumbs.db
+
+# Benchmark : suivre les scripts, ignorer les jeux de données et exports.
+/benchmark/**
+!/benchmark/**/
+!/benchmark/**/*.py

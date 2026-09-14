@@ -317,3 +317,41 @@ sortie non nul, sans nouvelle tentative ni substitution de modèle. Avec plusieu
 options `--model`, seuls les modèles explicitement demandés sont exécutés, dans
 l’ordre, même si l’un échoue. La réponse native Qwen figure dans
 `metadata.raw_response.provider_response`.
+
+## Préparation des données de benchmark : HSCodeComp
+
+Le fichier `benchmark/test_data.jsonl` provient du dataset présenté par Tian Lan
+et al. dans [HSCodeComp: A Realistic and Expert-level Agent Benchmark for
+Hierarchical Rule Application](https://aclanthology.org/2026.acl-long.937/)
+(ACL 2026, DOI : `10.18653/v1/2026.acl-long.937`). Le benchmark original contient
+632 produits issus du commerce en ligne, avec des annotations expertes à dix
+chiffres. Notre extraction conserve uniquement le titre et les six premiers
+chiffres du code ; elle constitue une version simplifiée du benchmark original.
+
+Depuis la racine du projet, avec Python standard, sans installation ni appel API :
+
+```bash
+python3 benchmark/prepare_hscodecomp.py \
+  benchmark/test_data.jsonl \
+  benchmark/hscodecomp_hs6_v1.csv
+```
+
+Le script autonome accepte le fichier tel qu’il est fourni, y compris ses objets
+multilignes et ses retours à la ligne non échappés dans les chaînes, ainsi que
+le JSONL standard. Il produit un CSV UTF-8 séparé par des points-virgules (`;`), avec exactement
+deux colonnes, dans cet ordre : `HS code`, `description`.
+
+- `hs_code` est converti en texte puis tronqué aux six premiers chiffres :
+  `7117199000` devient `711719`. Les zéros initiaux des codes fournis en texte sont
+  conservés ; charger cette colonne comme du texte dans un tableur.
+- `product_name` devient `description` ; les espaces successifs et retours à la
+  ligne sont remplacés par un espace. Les autres champs sont écartés.
+- L’ordre et les doublons sont conservés : une entrée produit une ligne CSV.
+  Une entrée invalide provoque une erreur explicite avant l’ouverture du CSV.
+
+Les chemins d’entrée et de sortie sont obligatoires. Une sortie existante est
+remplacée ; utiliser un nouveau suffixe (`_v2.csv`, etc.) pour conserver plusieurs
+versions locales. Le nom `prepare_hscodecomp.py` réserve ce script à ce dataset ;
+les futurs datasets pourront avoir leur propre `prepare_<dataset>.py`.
+Les scripts Python de `benchmark/` sont suivis par Git ; les données d’entrée et
+de sortie sont ignorées, y compris les différentes versions CSV.
