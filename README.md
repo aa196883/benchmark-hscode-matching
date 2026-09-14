@@ -291,3 +291,29 @@ Les tests Flask couvrent sélection, exécution séquentielle, durée totale, is
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+## Qwen via la CLI
+
+Avec le tunnel SSH déjà ouvert vers le serveur, définir `LOCAL_QWEN_KEY` dans
+`.env`. L’adaptateur utilise `http://localhost:8000/v1` par défaut ;
+`QWEN_BASE_URL` permet de changer cette adresse. Le projet ne crée pas le tunnel.
+
+```bash
+python3 -m hs_matching predict "Live purebred breeding horses" --model qwen3 --json
+```
+
+`qwen3` désigne `Qwen/Qwen3-VL-4B-Instruct-FP8`. Les prompts, schémas et validations
+existants sont conservés. Le serveur doit accepter Chat Completions avec
+`response_format=json_schema`. Les limites de tokens, température et timeout sont
+transmis ; `--reasoning-effort` est refusé explicitement pour Qwen.
+
+L’approche `llm_direct` ne nécessite aucune clé OpenAI avec Qwen. Avec
+`--approach rag --model qwen3`, Qwen effectue le classement, mais la vectorisation
+de la requête utilise toujours OpenAI et nécessite sa clé ainsi que l’index existant.
+L’approche `embeddings` ne prend pas de modèle de génération. L’UI reste inchangée.
+
+Une erreur de connexion, HTTP ou de réponse produit un run en erreur et un code de
+sortie non nul, sans nouvelle tentative ni substitution de modèle. Avec plusieurs
+options `--model`, seuls les modèles explicitement demandés sont exécutés, dans
+l’ordre, même si l’un échoue. La réponse native Qwen figure dans
+`metadata.raw_response.provider_response`.

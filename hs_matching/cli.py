@@ -9,6 +9,7 @@ from hs_matching.config import load_env
 from hs_matching.catalog import Catalog
 from hs_matching.experiments import run_prediction, save_run
 from hs_matching.providers.openai import ModelConfig, OpenAIProvider
+from hs_matching.providers.qwen import QWEN_MODEL, QwenProvider
 
 
 def main(argv=None):
@@ -19,7 +20,7 @@ def main(argv=None):
     predict.add_argument('query', help='Description anglaise ; - pour lire stdin')
     predict.add_argument('--approach', choices=sorted(REGISTRY), default='llm_direct')
     predict.add_argument('--index', default='artifacts/embeddings/h6_2022', help='Index précalculé pour embeddings ou RAG')
-    predict.add_argument('--model', action='append', help='Répétable pour comparer plusieurs modèles')
+    predict.add_argument('--model', action='append', help='Modèle OpenAI ou qwen3 ; répétable pour comparer plusieurs modèles')
     predict.add_argument('--retrieval-k', type=int, help='Nombre de voisins pour RAG (défaut : 20, doit être >= top-k)')
     predict.add_argument('--top-k', type=int, default=5)
     predict.add_argument('--catalog', default='data/processed/h6_2022/catalog.jsonl')
@@ -62,12 +63,20 @@ def main(argv=None):
                                  args.approach, retriever=retriever)
         else:
             models = args.model or [os.environ.get('OPENAI_MODEL', 'gpt-4.1-mini')]
-            configs = [ModelConfig(model=m, max_output_tokens=args.max_output_tokens,
+            configs = [ModelConfig(model=QWEN_MODEL if m == 'qwen3' else m, max_output_tokens=args.max_output_tokens,
                                    temperature=args.temperature, reasoning_effort=args.reasoning_effort,
                                    timeout=args.timeout) for m in models]
-            run = run_prediction(query, args.top_k, context, configs,
-                                 OpenAIProvider(os.environ.get('OPENAI_API_KEY')), args.approach,
-                                 retriever=retriever, retrieval_k=retrieval_k)
+            run = None
+            for config in configs:
+                provider = (QwenProvider(os.environ.get('LOCAL_QWEN_KEY'),
+                                         os.environ.get('QWEN_BASE_URL', 'http://localhost:8000/v1'))
+                            if config.model == QWEN_MODEL else OpenAIProvider(os.environ.get('OPENAI_API_KEY')))
+                model_run = run_prediction(query, args.top_k, context, [config], provider,
+                                           args.approach, retriever=retriever, retrieval_k=retrieval_k)
+                if run is None:
+                    run = model_run
+                else:
+                    run['predictions'].extend(model_run['predictions'])
         path = save_run(run, args.runs_dir)
     except (OSError, ValueError, KeyError, ImportError) as exc:
         print(f'Erreur : {exc}', file=sys.stderr)
