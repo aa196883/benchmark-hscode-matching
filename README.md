@@ -355,3 +355,80 @@ versions locales. Le nom `prepare_hscodecomp.py` réserve ce script à ce datase
 les futurs datasets pourront avoir leur propre `prepare_<dataset>.py`.
 Les scripts Python de `benchmark/` sont suivis par Git ; les données d’entrée et
 de sortie sont ignorées, y compris les différentes versions CSV.
+## CLI de benchmark : collecte sans métriques
+
+La CLI indépendante `benchmark/benchmark.py` exécute une approche sur chaque
+ligne d'un ou plusieurs CSV. Depuis la racine du dépôt :
+
+```bash
+python benchmark/benchmark.py --approach llm_direct --model qwen3
+python benchmark/benchmark.py --datasets dataset_1.csv dataset_2.csv --model qwen3 --approach llm_direct --top-k 5
+python benchmark/benchmark.py --datasets dataset_1.csv --approach embeddings --index artifacts/embeddings/h6_2022 --top-k 10
+python benchmark/benchmark.py --datasets dataset_1.csv --approach rag --model qwen3 --top-k 5 --retrieval-k 20
+```
+
+Le dataset par défaut est `benchmark/hscodecomp_hs6_v1.csv`. Les CSV UTF-8
+(avec ou sans BOM) doivent avoir exactement deux colonnes : code HS de six
+chiffres, puis description non vide. Les séparateurs `;` et `,` sont acceptés,
+avec ou sans en-tête (`HS code;description`, `hs_code,description`, etc.).
+Les descriptions contenant le séparateur ou des retours à la ligne doivent être
+entre guillemets CSV. Tous les fichiers sont validés avant les appels aux modèles ;
+les zéros initiaux, l'ordre et les doublons sont conservés.
+
+Les conventions sont celles de l'inférence : `llm_direct`, `embeddings`, `rag`,
+alias `qwen3`, `--top-k`, `--retrieval-k`, `--index`, `--catalog`, `--env-file`,
+`--max-output-tokens`, `--temperature`, `--reasoning-effort` et `--timeout`.
+`--approach` est obligatoire. Un seul modèle est utilisé par invocation ; à défaut,
+le LLM est `OPENAI_MODEL` ou `gpt-4.1-mini`. Pour `embeddings`, omettre `--model`
+ou passer `--model ""` : le modèle de vectorisation vient de l'index.
+
+Chaque couple dataset / approche / modèle produit un nouveau JSON indenté dans
+`benchmark/runs/` (modifiable avec `--runs-dir`), avec un identifiant unique dans
+son nom. Le fichier est créé avant l'initialisation de l'approche et reste lisible
+après chaque résultat sauvegardé. Exemple de structure abrégée :
+
+```json
+{
+  "model": "qwen3",
+  "approach": "llm_direct",
+  "dataset": "dataset_1.csv",
+  "top_k": 5,
+  "results": [
+    {
+      "response_time": 1.25,
+      "ground_truth": "010121",
+      "description": "Live pure-bred breeding horses",
+      "answer": {
+        "status": "abstained",
+        "candidates": [],
+        "missing_information": [],
+        "metadata": {},
+        "error": null
+      }
+    }
+  ]
+}
+```
+
+`response_time` mesure en secondes l'appel complet à l'approche pour la ligne,
+retrieval inclus, hors initialisation et écriture du fichier. `answer` conserve
+l'objet complet renvoyé par l'approche : candidats, scores éventuels, erreurs et
+métadonnées, dont la réponse brute du fournisseur LLM (`metadata.raw_response`)
+et les candidats récupérés en RAG lorsqu'ils sont disponibles. La validation
+interne des approches existantes s'applique toujours ; le benchmark n'ajoute aucun
+filtrage, transformation des réponses ou calcul de métriques. Les paramètres
+applicables figurent aussi à la racine du JSON, ainsi que `created_at` et
+`dataset_size`. Pour `embeddings`, l'attribut racine `model` vaut `""` et la
+configuration effective de vectorisation figure dans les métadonnées des réponses.
+
+Une erreur de prédiction est enregistrée et les lignes suivantes sont traitées.
+Une interruption conserve les résultats déjà écrits ; comparer leur nombre à
+`dataset_size` pour repérer une collecte partielle. Codes de sortie : `0` si aucune
+prédiction n'est en erreur, `1` si au moins une l'est, `2` pour une erreur de
+configuration, de CSV ou d'exécution, `130` sur interruption clavier.
+
+Tests hors réseau sur un petit CSV temporaire :
+
+```bash
+python -m unittest discover -s benchmark -t . -p 'test_*.py'
+```
