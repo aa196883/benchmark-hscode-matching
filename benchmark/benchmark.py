@@ -50,6 +50,25 @@ def read_dataset(path):
     return rows
 
 
+def token_counts(metadata, approach):
+    """Normalise les usages fournisseurs et inclut la récupération pour le RAG."""
+    def counts(usage, embedding=False):
+        usage = usage if isinstance(usage, dict) else {}
+        def count(primary, alternate):
+            value = usage.get(primary, usage.get(alternate))
+            return value if type(value) is int and value >= 0 else None
+        return (count('input_tokens', 'prompt_tokens'),
+                0 if embedding else count('output_tokens', 'completion_tokens'))
+
+    input_tokens, output_tokens = counts(metadata.get('usage'), approach == 'embeddings')
+    if approach == 'rag':
+        retrieval = metadata.get('retrieval') or {}
+        retrieval_input, _ = counts(retrieval.get('usage'), embedding=True)
+        input_tokens = (input_tokens + retrieval_input
+                        if input_tokens is not None and retrieval_input is not None else None)
+    return {'input_tokens': input_tokens, 'output_tokens': output_tokens}
+
+
 class Trace:
     """Maintient un document JSON lisible après chaque résultat, sans tout réécrire."""
     def __init__(self, path, metadata):
@@ -203,10 +222,10 @@ def main(argv=None):
                         answer = Prediction(status='error', error={'kind': type(exc).__name__,
                                             'message': 'Erreur interne pendant la prédiction.'}).to_dict()
                     elapsed = perf_counter() - start
-                    answer.pop('metadata', None)
+                    tokens = token_counts(answer.pop('metadata', {}), args.approach)
                     if args.approach == 'llm_direct':
                         answer.pop('raw_response', None)
-                    trace.append(dict(response_time=elapsed, ground_truth=code, description=description, answer=answer))
+                    trace.append(dict(response_time=elapsed, **tokens, ground_truth=code, description=description, answer=answer))
                     failed |= answer.get('status') == 'error'
                     progress.update(trace.count)
             finally:

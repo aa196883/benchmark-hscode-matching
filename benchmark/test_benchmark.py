@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from benchmark.benchmark import Trace, main, read_dataset
+from benchmark.benchmark import Trace, main, read_dataset, token_counts
 from hs_matching.approaches.base import Prediction
 
 
@@ -48,7 +48,8 @@ class BenchmarkTests(unittest.TestCase):
             with self.subTest(approach=name):
                 runs = self.root / name
                 raw = {'output': 'unparsed response', 'extra': [1, 2]}
-                prediction = Prediction(status='abstained', metadata={'raw_response': raw})
+                prediction = Prediction(status='abstained', metadata={'raw_response': raw, 'usage': {'prompt_tokens': 42, 'completion_tokens': 7},
+                                                                          'retrieval': {'usage': {'prompt_tokens': 3}}})
                 approach = Mock()
                 approach.predict.side_effect = [RuntimeError('secret'), prediction]
                 def build(args):
@@ -61,6 +62,9 @@ class BenchmarkTests(unittest.TestCase):
                 self.assertEqual(len(run['results']), 2)
                 self.assertEqual(run['results'][0]['ground_truth'], '010121')
                 self.assertEqual(run['results'][0]['answer']['status'], 'error')
+                self.assertIsNone(run['results'][0]['input_tokens'])
+                self.assertEqual(run['results'][1]['input_tokens'], 45 if name == 'rag' else 42)
+                self.assertEqual(run['results'][1]['output_tokens'], 0 if name == 'embeddings' else 7)
                 expected = prediction.to_dict()
                 expected.pop('metadata')
                 self.assertEqual(run['results'][1]['answer'], expected)
@@ -70,6 +74,21 @@ class BenchmarkTests(unittest.TestCase):
                 self.assertGreaterEqual(run['results'][1]['response_time'], 0)
                 if name == 'embeddings':
                     self.assertEqual(run['model'], '')
+
+    def test_token_counts(self):
+        for usage in ({'input_tokens': 12, 'output_tokens': 4},
+                      {'prompt_tokens': 12, 'completion_tokens': 4}):
+            self.assertEqual(token_counts({'usage': usage}, 'llm_direct'),
+                             {'input_tokens': 12, 'output_tokens': 4})
+        for usage in (None, {}, {'input_tokens': -1, 'output_tokens': True}):
+            self.assertEqual(token_counts({'usage': usage}, 'llm_direct'),
+                             {'input_tokens': None, 'output_tokens': None})
+        self.assertEqual(token_counts({'usage': {'input_tokens': 0, 'output_tokens': 0}}, 'llm_direct'),
+                         {'input_tokens': 0, 'output_tokens': 0})
+        self.assertEqual(token_counts({'usage': {'input_tokens': 12, 'output_tokens': 4}}, 'rag'),
+                         {'input_tokens': None, 'output_tokens': 4})
+        self.assertEqual(token_counts({'usage': {'prompt_tokens': 3}}, 'embeddings'),
+                         {'input_tokens': 3, 'output_tokens': 0})
 
     def test_progress_in_terminal_and_script_logs(self):
         for terminal in (False, True):

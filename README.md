@@ -396,6 +396,8 @@ après chaque résultat sauvegardé. Exemple de structure abrégée :
   "results": [
     {
       "response_time": 1.25,
+      "input_tokens": 180,
+      "output_tokens": 25,
       "ground_truth": "010121",
       "description": "Live pure-bred breeding horses",
       "answer": {
@@ -410,7 +412,14 @@ après chaque résultat sauvegardé. Exemple de structure abrégée :
 ```
 
 `response_time` mesure en secondes l'appel complet à l'approche pour la ligne,
-retrieval inclus, hors initialisation et écriture du fichier. `answer` conserve
+retrieval inclus, hors initialisation et écriture du fichier.
+`input_tokens` et `output_tokens` conservent les compteurs renvoyés par les
+fournisseurs pour chaque résultat, y compris les erreurs si l’usage est disponible.
+Un compteur inconnu vaut `null`. Pour `embeddings`, l’entrée correspond à la
+vectorisation de la requête et la sortie vaut `0`. Pour `rag`, l’entrée additionne
+les tokens de vectorisation de la requête et du LLM (ou vaut `null` si l’un manque) ;
+la sortie correspond au LLM. Le précalcul de l’index est exclu.
+`answer` conserve
 le statut, les candidats et leurs scores éventuels, les informations manquantes
 et les erreurs. Les métadonnées des réponses sont supprimées pour toutes les
 approches, y compris les réponses brutes LLM qu'elles contenaient. Le champ
