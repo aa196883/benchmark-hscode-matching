@@ -467,12 +467,13 @@ Pour comparer des configurations différentes séparément, produire des rapport
 avec des sélections de fichiers différentes.
 
 Le Markdown contient uniquement une table : une colonne identifie le couple
-modèle / approche, suivie des quatre colonnes de résultats demandées :
+modèle / approche, suivie des colonnes de résultats :
 
 - Chapitre : au moins un candidat partage les deux premiers chiffres du code attendu.
 - Position : au moins un candidat partage les quatre premiers chiffres.
 - Sous-position : au moins un candidat partage les six chiffres.
 - Temps moyen : moyenne de `response_time`, en secondes par élément, erreurs incluses.
+- Tokens moyens : moyennes par résultat de `input_tokens`, de `output_tokens` et de leur somme, erreurs incluses. Les valeurs absentes ou `null` sont exclues de chaque moyenne ; le total nécessite les deux compteurs. Sans mesure disponible, la colonne affiche `N/A`.
 
 Tous les candidats des statuts `ok` et `needs_info` sont examinés, pas seulement
 le premier. Une liste vide, une abstention ou une erreur vaut une non-correspondance

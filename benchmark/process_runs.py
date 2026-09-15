@@ -41,6 +41,7 @@ def summarize(groups):
         count = 0
         matches = [0, 0, 0]
         times = []
+        tokens = {name: [] for name in ('input_tokens', 'output_tokens', 'total_tokens')}
         for path, results in runs:
             for number, result in enumerate(results, 1):
                 where = f'{path}, résultat {number}'
@@ -52,6 +53,14 @@ def summarize(groups):
                 duration = result.get('response_time')
                 if type(duration) not in (int, float) or not math.isfinite(duration) or duration < 0:
                     raise ValueError(f'{where} : response_time doit être un nombre fini positif ou nul')
+                for name in ('input_tokens', 'output_tokens'):
+                    value = result.get(name)
+                    if value is not None:
+                        if type(value) is not int or value < 0:
+                            raise ValueError(f'{where} : {name} doit être un entier positif ou nul, ou null')
+                        tokens[name].append(value)
+                if result.get('input_tokens') is not None and result.get('output_tokens') is not None:
+                    tokens['total_tokens'].append(result['input_tokens'] + result['output_tokens'])
                 answer = result.get('answer')
                 if not isinstance(answer, dict) or not isinstance(answer.get('candidates'), list):
                     raise ValueError(f'{where} : answer.candidates doit être une liste')
@@ -67,7 +76,9 @@ def summarize(groups):
                 count += 1
                 times.append(duration)
         summaries[key] = {'count': count, 'matches': matches,
-                          'mean_time': math.fsum(times) / count if count else None}
+                          'mean_time': math.fsum(times) / count if count else None,
+                          **{f'mean_{name}': sum(values) / len(values) if values else None
+                             for name, values in tokens.items()}}
     return summaries
 
 
@@ -75,14 +86,16 @@ def markdown(summaries):
     def escape(value):
         return value.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('|', '&#124;').replace('\n', ' ').replace('\r', ' ')
 
-    lines = ['| Modèle / approche | Chapitre (2 chiffres) | Position (4 chiffres) | Sous-position (6 chiffres) | Temps moyen (s) |',
-             '| --- | ---: | ---: | ---: | ---: |']
+    lines = ['| Modèle / approche | Chapitre (2 chiffres) | Position (4 chiffres) | Sous-position (6 chiffres) | Temps moyen (s) | Tokens d’entrée moyens | Tokens de sortie moyens | Tokens totaux moyens |',
+             '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |']
     for (model, approach), summary in summaries.items():
         count = summary['count']
         fractions = [f'{n}/{count} ({n / count:.2%})' if count else 'N/A (0 résultat)' for n in summary['matches']]
         duration = f'{summary["mean_time"]:.3f}' if count else 'N/A'
+        token_means = [f'{summary[f"mean_{name}"]:.2f}' if summary[f'mean_{name}'] is not None else 'N/A'
+                       for name in ('input_tokens', 'output_tokens', 'total_tokens')]
         label = f'{escape(model) if model else "(sans modèle)"} / {escape(approach)}'
-        lines.append('| ' + ' | '.join([label, *fractions, duration]) + ' |')
+        lines.append('| ' + ' | '.join([label, *fractions, duration, *token_means]) + ' |')
     return '\n'.join(lines) + '\n'
 
 

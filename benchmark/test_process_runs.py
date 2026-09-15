@@ -32,6 +32,32 @@ class ProcessRunsTests(unittest.TestCase):
         self.assertEqual(stats['matches'], [3, 2, 1])
         self.assertEqual(stats['mean_time'], 1.5)
 
+    def test_token_means_across_runs_and_missing_values(self):
+        a = self.run_file('a.json', [dict(self.row(), input_tokens=100, output_tokens=20)])
+        b = self.run_file('b.json', [dict(self.row(status='error'), input_tokens=20, output_tokens=0),
+                                   dict(self.row(), input_tokens=30, output_tokens=10)])
+        summary = summarize(group_runs([a, b]))
+        stats = summary['m', 'rag']
+        self.assertEqual(stats['mean_input_tokens'], 50)
+        self.assertEqual(stats['mean_output_tokens'], 10)
+        self.assertEqual(stats['mean_total_tokens'], 60)
+        self.assertIn('| 50.00 | 10.00 | 60.00 |', markdown(summary))
+        c = self.run_file('c.json', [self.row(), dict(self.row(), input_tokens=None, output_tokens=10)])
+        stats = summarize(group_runs([a, b, c]))['m', 'rag']
+        self.assertEqual(stats['mean_input_tokens'], 50)
+        self.assertEqual(stats['mean_output_tokens'], 10)
+        self.assertEqual(stats['mean_total_tokens'], 60)
+        missing = summarize(group_runs([self.run_file('old.json', [self.row()])]))
+        self.assertIn('| N/A | N/A | N/A |', markdown(missing))
+
+    def test_invalid_tokens(self):
+        for name in ('input_tokens', 'output_tokens'):
+            for value in (-1, True, '10', 1.5):
+                with self.subTest(name=name, value=value):
+                    path = self.run_file('bad.json', [dict(self.row(), **{name: value})])
+                    with self.assertRaisesRegex(ValueError, name):
+                        summarize(group_runs([path]))
+
     def test_separate_groups_globs_and_empty_runs(self):
         self.run_file('a.json', [self.row(['010121'])], approach='llm_direct')
         self.run_file('b.json', [self.row(['010121'])], model='', approach='embeddings')
