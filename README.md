@@ -4,6 +4,8 @@ Prototype Python pour proposer les **N codes HS les plus pertinents** à partir 
 
 **État : prétraitement H6, approches LLM directe, embeddings et RAG, CLI et GUI Flask disponibles.** La baseline lexicale et l’évaluation restent à implémenter. Les sections ci-dessous décrivent l’installation, l’architecture et les commandes disponibles.
 
+Environnement Java et procédure d’intégration industrielle : [sandbox_java/README.md](sandbox_java/README.md).
+
 ## Installation sous Linux
 
 Python **3.10+** est requis. Depuis la racine du dépôt, créer puis activer un environnement virtuel :

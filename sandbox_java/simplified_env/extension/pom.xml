@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>local.lestr.sandbox</groupId>
+    <artifactId>simplified-env</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>extension</artifactId>
+  <dependencies>
+    <dependency>
+      <groupId>local.lestr.sandbox</groupId>
+      <artifactId>compat</artifactId>
+      <version>${project.version}</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+</project>

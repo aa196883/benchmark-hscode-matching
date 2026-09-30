@@ -1,0 +1,156 @@
+{
+  "HSCode.java": {
+    "reference_sha256": "37dc8a548ab6da159ff487290dfe523715bbd47704da6858123be8899e0b17b4",
+    "local_sha256": "37dc8a548ab6da159ff487290dfe523715bbd47704da6858123be8899e0b17b4",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/shared/kernel/goods/HSCode.java",
+    "change": "identical"
+  },
+  "HSCodeAnalysisService.java": {
+    "reference_sha256": "e87c995373f9ec93ef4321144c6f15d2659aefb864b0b6bfc7dc588b4285c93e",
+    "local_sha256": "e87c995373f9ec93ef4321144c6f15d2659aefb864b0b6bfc7dc588b4285c93e",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/spi/HSCodeAnalysisService.java",
+    "change": "identical"
+  },
+  "HSCodeService.java": {
+    "reference_sha256": "1a0e1b09558733194396a94b53c8c37228f1758b1e5dde2b3a6533c8677f2bf3",
+    "local_sha256": "1a0e1b09558733194396a94b53c8c37228f1758b1e5dde2b3a6533c8677f2bf3",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/spi/HSCodeService.java",
+    "change": "identical"
+  },
+  "HSCodeWithDescription.java": {
+    "reference_sha256": "489e02c8de86b064df63869be4873614fe0f50553c688933cd90d0ac693224a5",
+    "local_sha256": "489e02c8de86b064df63869be4873614fe0f50553c688933cd90d0ac693224a5",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/HSCodeWithDescription.java",
+    "change": "identical"
+  },
+  "HSVersion.java": {
+    "reference_sha256": "5b5d820e66cce6426ff5817fe50eda05614c858521840d7e50d2b1a3b1416629",
+    "local_sha256": "5b5d820e66cce6426ff5817fe50eda05614c858521840d7e50d2b1a3b1416629",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/HSVersion.java",
+    "change": "identical"
+  },
+  "HSCodeAnalysisException.java": {
+    "reference_sha256": "7be292160da709f1e9d9bfecc7501a2cb64bfa86eb7caf68b720963bfe22ee33",
+    "local_sha256": "7be292160da709f1e9d9bfecc7501a2cb64bfa86eb7caf68b720963bfe22ee33",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/HSCodeAnalysisException.java",
+    "change": "identical"
+  },
+  "AnalyseResult.java": {
+    "reference_sha256": "62476a0d2fde30f9727bdaf4c9e382af57adaab8b6a55efc0cb03743e33f0242",
+    "local_sha256": "62476a0d2fde30f9727bdaf4c9e382af57adaab8b6a55efc0cb03743e33f0242",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/AnalyseResult.java",
+    "change": "identical"
+  },
+  "MatchingScore.java": {
+    "reference_sha256": "f226e696b272ba5c14db08b4cff50901f00fcad327f4649134705018d18afe33",
+    "local_sha256": "f226e696b272ba5c14db08b4cff50901f00fcad327f4649134705018d18afe33",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/MatchingScore.java",
+    "change": "identical"
+  },
+  "MatchingHSCode.java": {
+    "reference_sha256": "e00d07df6ccc2b719851ada6c7eb5db7a8ba1fbd2e6e862b4951b9087c068bae",
+    "local_sha256": "e00d07df6ccc2b719851ada6c7eb5db7a8ba1fbd2e6e862b4951b9087c068bae",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/MatchingHSCode.java",
+    "change": "identical"
+  },
+  "SearchResult.java": {
+    "reference_sha256": "3eed9c3ee21f8454631bb21d5eb75e8f2e3117861ce2f202bc0d1b2299ab1081",
+    "local_sha256": "3eed9c3ee21f8454631bb21d5eb75e8f2e3117861ce2f202bc0d1b2299ab1081",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/SearchResult.java",
+    "change": "identical"
+  },
+  "Source.java": {
+    "reference_sha256": "e2569eba67ee0bb4b29894a4e01b6d29f4653ffb115bdb627b3f0155ddf8d1c4",
+    "local_sha256": "e2569eba67ee0bb4b29894a4e01b6d29f4653ffb115bdb627b3f0155ddf8d1c4",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/Source.java",
+    "change": "identical"
+  },
+  "MatchingHSCodeComparator.java": {
+    "reference_sha256": "1ac5f638a8b94e2e594a230e8f71db91b94dd12b46837b287f4332fd5450533c",
+    "local_sha256": "1ac5f638a8b94e2e594a230e8f71db91b94dd12b46837b287f4332fd5450533c",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/MatchingHSCodeComparator.java",
+    "change": "identical"
+  },
+  "HSCodeAnalysisServiceImpl.java": {
+    "reference_sha256": "9ef53e23114a0abd6c2e70f05fcd97e8b16930e61496c2c240d6ad8d02543733",
+    "local_sha256": "9ef53e23114a0abd6c2e70f05fcd97e8b16930e61496c2c240d6ad8d02543733",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/HSCodeAnalysisServiceImpl.java",
+    "change": "identical"
+  },
+  "Candidate.java": {
+    "reference_sha256": "7bad97e0b573daaff18cb34a2f1e13f96b8b8cec6b95a87677b811bd9532a77b",
+    "local_sha256": "7bad97e0b573daaff18cb34a2f1e13f96b8b8cec6b95a87677b811bd9532a77b",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/Candidate.java",
+    "change": "identical"
+  },
+  "Candidates.java": {
+    "reference_sha256": "15a0d4cdc4efd9e76a3af18d34bfa6049158ba5cb0986670090ec408b30b2e01",
+    "local_sha256": "15a0d4cdc4efd9e76a3af18d34bfa6049158ba5cb0986670090ec408b30b2e01",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/Candidates.java",
+    "change": "identical"
+  },
+  "EmbeddingModelType.java": {
+    "reference_sha256": "aba69bd91e704739f925edc8de68bad9355f2e953184abb68635ce4a6a1aedeb",
+    "local_sha256": "aba69bd91e704739f925edc8de68bad9355f2e953184abb68635ce4a6a1aedeb",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/EmbeddingModelType.java",
+    "change": "identical"
+  },
+  "CompletionHSCodeChatServiceImpl.java": {
+    "reference_sha256": "907cce3c26f154626fd0ff6355237e368fb2df579cba95e638f355d3db81eb9f",
+    "local_sha256": "907cce3c26f154626fd0ff6355237e368fb2df579cba95e638f355d3db81eb9f",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/CompletionHSCodeChatServiceImpl.java",
+    "change": "identical"
+  },
+  "ChatService.java": {
+    "reference_sha256": "f1002af5617eaff0debb50fc883c675c46f95ed1f175585fd4b81d661a90e6d0",
+    "local_sha256": "f1002af5617eaff0debb50fc883c675c46f95ed1f175585fd4b81d661a90e6d0",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/ChatService.java",
+    "change": "identical"
+  },
+  "EmbeddingService.java": {
+    "reference_sha256": "a5e1aed06336f3b262e5b80016f312348b40e353b07f709749b6049a4041558a",
+    "local_sha256": "a5e1aed06336f3b262e5b80016f312348b40e353b07f709749b6049a4041558a",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/EmbeddingService.java",
+    "change": "identical"
+  },
+  "ResponseFormatUtils.java": {
+    "reference_sha256": "4cec9e0d84211510764488cb239a8015b323d5baf385040d660abc3e654f9141",
+    "local_sha256": "4cec9e0d84211510764488cb239a8015b323d5baf385040d660abc3e654f9141",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/ResponseFormatUtils.java",
+    "change": "identical"
+  },
+  "OpenAIProperties.java": {
+    "reference_sha256": "4f2b753856e886e72d8f93f6ba177b65b14ab3da79d49067c71fd2736234316a",
+    "local_sha256": "1378ca67563e1aac0a670a459328b89bc91cce9d84423aa25937ec6e23d2c7ae",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/configuration/OpenAIProperties.java",
+    "change": "Spring annotations removed"
+  },
+  "HSNomenclature.java": {
+    "reference_sha256": "271b1c3d8284cf764ce2d4f625b62fd99c7ebf96b769a4434ee19d64efb3a05c",
+    "local_sha256": "271b1c3d8284cf764ce2d4f625b62fd99c7ebf96b769a4434ee19d64efb3a05c",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/HSNomenclature.java",
+    "change": "conversation source; no behavioral edits",
+    "origin": "user message, 2026-09-30"
+  },
+  "HSLevel.java": {
+    "reference_sha256": "a8838d04c5cda5da2d19bb5c2a65a3ef1d07983ecafb04f19a57626c6ad0b8b5",
+    "local_sha256": "a8838d04c5cda5da2d19bb5c2a65a3ef1d07983ecafb04f19a57626c6ad0b8b5",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/HSLevel.java",
+    "change": "conversation source; no behavioral edits",
+    "origin": "user message, 2026-09-30"
+  },
+  "NumberCandidate.java": {
+    "reference_sha256": "4546cbc20faeb0ba49bda15f9ca6b11fa1879e0397339f71373d5e4cc7b9f9fa",
+    "local_sha256": "4546cbc20faeb0ba49bda15f9ca6b11fa1879e0397339f71373d5e4cc7b9f9fa",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/NumberCandidate.java",
+    "change": "conversation source; no behavioral edits",
+    "origin": "user message, 2026-09-30"
+  },
+  "NumberCandidates.java": {
+    "reference_sha256": "dacf7aaf28219069ca2a1af9fd083d5181fb126f87048220a98ccb311e083764",
+    "local_sha256": "dacf7aaf28219069ca2a1af9fd083d5181fb126f87048220a98ccb311e083764",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/NumberCandidates.java",
+    "change": "conversation source; no behavioral edits",
+    "origin": "user message, 2026-09-30"
+  }
+}

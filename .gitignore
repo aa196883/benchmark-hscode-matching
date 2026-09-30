@@ -45,6 +45,8 @@ Thumbs.db
 !/benchmark/**/
 !/benchmark/**/*.py
 
-
 # Scripts
 script.sh
+
+# Code Lestr
+sandbox_java/lestr_sources/
