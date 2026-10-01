@@ -1,2 +1,2 @@
-/** Future transferable RAG implementation. Do not import local.lestr.sandbox classes here. */
+/** HS 2022 RAG using the precomputed Python index and Responses API. */
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "created_at": "2026-09-30T00:00:00+00:00",
+  "edition": "2022",
+  "language": "en",
+  "text_field": "contextual_description",
+  "provider": "openai",
+  "config": {
+    "model": "text-embedding-3-small",
+    "dimensions": null
+  },
+  "response_model": "text-embedding-3-small",
+  "dimensions": 2,
+  "count": 3,
+  "source": {
+    "path": "candidates.jsonl",
+    "sha256": "54aab92caed10d8becf576a498976f13a1741e5aa367c7ca665ac1e5bb9651f1",
+    "descriptions_sha256": "0c3ee96b89f75cd25878fa7ff202c75dca086ccc92bfcddb3f45646f4011b48a"
+  },
+  "vectors_sha256": "684b6a6daf4f7890e7cd62a267fb307edf1736d66899f6dd15c9e07fc7e21ba0",
+  "normalization": "raw_on_disk_l2_in_memory",
+  "batch_size": 64,
+  "batches": [
+    {
+      "offset": 0,
+      "count": 3,
+      "usage": {}
+    }
+  ],
+  "duration_seconds": 0
+}

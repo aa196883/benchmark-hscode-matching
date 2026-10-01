@@ -7,8 +7,9 @@ if [[ -z "$(find "$sandbox_root/extension/src/main/java" -name '*.java' ! -name 
 fi
 "$sandbox_root/dev.sh" verify "$@"
 mkdir -p "$sandbox_root/extension/target"
-source_paths=(src/main)
+source_paths=(src/main INTEGRATION.md)
 if [[ -d "$sandbox_root/extension/src/test" ]]; then source_paths+=(src/test); fi
 tar -czf "$sandbox_root/extension/target/transferable-sources.tar.gz" -C "$sandbox_root/extension" "${source_paths[@]}"
+(cd "$sandbox_root/extension/target" && sha256sum transferable-sources.tar.gz > transferable-sources.tar.gz.sha256)
 echo "Archive de sources à examiner : $sandbox_root/extension/target/transferable-sources.tar.gz"
 echo 'Extraire dans un répertoire de revue puis copier uniquement les nouveaux fichiers dans le module industriel cible.'

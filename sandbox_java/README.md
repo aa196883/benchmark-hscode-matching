@@ -1,9 +1,9 @@
 # Environnement Java local et transfert industriel
 
-Ce dossier prépare le développement du service RAG destiné à implémenter
-`HSCodeAnalysisService`. Le présent jalon fournit un environnement compilable et
-testable autour des extraits industriels ; **le nouveau service RAG n’est pas encore
-implémenté**. La completion existante sert de comportement de référence.
+Ce dossier contient le socle Java local et le portage RAG implémentant
+`HSCodeAnalysisService`. La completion existante sert de référence de compatibilité.
+Le [guide RAG](RAG.md) décrit les commandes, l’index Python, les scores fixes
+(2.5 détaillé / 3 industriel), les tests de parité et l’export.
 
 Les tests locaux établissent une compatibilité avec les extraits reçus. La procédure
 vers le dépôt industriel est une **hypothèse d’intégration argumentée (« educated guess »)** :
@@ -17,7 +17,7 @@ sandbox_java/
   simplified_env/
     pom.xml                     agrégateur Maven, Java 21
     compat/                     contrats et services industriels reproduits
-    extension/                  emplacement du futur code transférable
+    extension/                  service RAG et tests transférables
     runner/                     référentiel local, doubles, CLI, tests
     reference-manifest.json     empreintes et écarts des copies
     dev.sh                      compilation, tests, lancement
@@ -205,14 +205,12 @@ Ce store JSON LangChain4j n’est pas le format `manifest.json` + `vectors.jsonl
 POC. La recherche LangChain4j ne doit pas non plus être présumée exposer exactement
 la même échelle de score que le cosinus brut du POC.
 
-Le futur RAG reste fondé sur les choix déjà retenus : importer l’index POC, conserver
-les résultats enrichis en interne, adapter vers `SearchResult` et déléguer
-`analyse()` au service de completion. Son chargement, ses validations, le score
-à exposer et le choix de `Source` restent à implémenter explicitement. En particulier,
-ne pas présenter le rang du LLM ou le cosinus comme une confiance 0–5 sans décision
-métier. Le service actuel `EmbeddingService` vectorise les libellés simples, alors
-que l’index POC utilise les descriptions contextualisées : il ne faut pas reconstruire
-silencieusement un index avec l’autre texte.
+Le RAG Java utilise désormais l’index POC, conserve les résultats enrichis en
+interne et les expose par `searchDetailed()`. Il adapte vers `SearchResult` avec un
+score constant 3 et `Source.OpenAI_Hybrid`, sans reclasser ; le résultat détaillé
+porte un score constant 2.5. `analyse()` délègue à la completion. Le chargement de
+l’index Python est indépendant d’`EmbeddingService`, dont les libellés simples et
+le format de stockage ne correspondent pas à ceux du POC. Voir [RAG.md](RAG.md).
 
 ## 4. Développer puis transférer du nouveau code
 
@@ -230,8 +228,8 @@ silencieusement un index avec l’autre texte.
    d’information manquante et de code hors candidats du POC.
 4. Lancer `sandbox_java/simplified_env/export.sh`. Le script refuse un module sans
    implémentation, exécute `verify`, puis produit
-   `extension/target/transferable-sources.tar.gz` avec uniquement `src/main` et,
-   s’il existe, `src/test` du module. Il n’inclut ni POM local, ni `compat`, ni
+   `extension/target/transferable-sources.tar.gz` avec `src/main`, `src/test`
+   et le guide `INTEGRATION.md` du module, plus une empreinte SHA-256 adjacente. Il n’inclut ni POM local, ni `compat`, ni
    `runner`, ni données, ni dépendances binaires. Examiner les ressources ajoutées
    au module avant export. L’archive est un livrable de revue, pas un déploiement.
 5. Extraire l’archive dans un répertoire de revue distinct du dépôt industriel.
@@ -273,7 +271,7 @@ pas un nouveau parent Maven à imposer au projet cible.
 - Vérifier la sérialisation réellement exposée aux appelants et leurs hypothèses
   sur le tri, les scores, les listes vides, les exceptions et les valeurs de `Source`.
   Le JSON de présentation de la CLI locale ne définit pas cette API industrielle.
-- Avec le futur RAG : comparer les voisins et le classement sur un petit jeu figé
+- Avec le RAG : comparer les voisins et le classement sur un petit jeu figé
   partagé avec Python, puis contrôler les mauvaises dimensions, index périmé,
   fichier absent, catalogue discordant, codes rejetés et questions manquantes.
 - Tester le packaging final depuis un autre répertoire, les ressources dans le JAR
@@ -287,14 +285,13 @@ pas un nouveau parent Maven à imposer au projet cible.
   requêtes concurrentes. Prévoir un choix de service/configuration permettant de
   revenir à la completion existante pendant la validation de l’intégration.
 
-## 5. Vérifications effectuées sur ce jalon
+## 5. Vérifications effectuées
 
-- `dev.sh verify -o` : **27 tests réussis**, aucun échec ni test ignoré, JAR construit.
-- Démonstration et analyse simulée lancées depuis le JAR ; recherche exécutée avec
-  le catalogue Python complet. Démonstration également lancée depuis `/tmp`.
-- Build et export réussis dans une copie isolée sans `lestr_sources`, avec une
-  classe temporaire compilant contre le contrat industriel. Archive contrôlée :
-  seulement les sources d’`extension`. Copie d’essai supprimée après vérification.
-- Refus de l’export vérifié lorsque le module ne contient pas encore d’implémentation.
-- Pas d’appel à OpenAI réel, pas de test du dépôt industriel, pas de validation
-  RAG à ce stade. Ces validations appartiennent aux étapes suivantes.
+Le socle conserve ses 27 tests de compatibilité. Le portage RAG ajoute 49 tests,
+soit **76 tests réussis**, sans test ignoré. Le JAR a été exécuté en démonstration,
+en analyse simulée et en rejeu RAG ; les scripts fonctionnent depuis un autre
+répertoire. L’index réel et l’archive exportée ont fait l’objet de vérifications
+décrites dans [RAG.md](RAG.md).
+
+Aucun appel OpenAI réel ni test du dépôt industriel n’a été effectué. Le code
+Java ne sort pas de `sandbox_java/` ; le README global renvoie à ce dossier.

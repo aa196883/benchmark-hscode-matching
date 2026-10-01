@@ -1,0 +1,80 @@
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.semsoft.lestr.tradeanalysis.domain.model.HSCodeAnalysisException;
+import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.io.TempDir;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
+import static org.junit.jupiter.api.Assertions.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+
+class PythonParityTest {
+    @TempDir Path directory;
+    @TestFactory Stream<DynamicTest> goldenCasesFromActualPythonImplementation() throws Exception {
+        RagTestSupport.fixtures(directory);
+        var index = RagTestSupport.index(directory);
+        JsonNode cases;
+        try (var stream = getClass().getResourceAsStream("/rag-fixtures/cases.json")) { cases = MAPPER.readTree(stream); }
+        var tests = new ArrayList<DynamicTest>();
+        for (JsonNode c : cases) tests.add(DynamicTest.dynamicTest(c.get("name").asText(), () -> check(index, c)));
+        return tests.stream();
+    }
+    private void check(PrecomputedEmbeddingIndex index, JsonNode c) {
+        var embedCalls = new AtomicInteger(); var generateCalls = new AtomicInteger();
+        RagEmbeddingClient embed = query -> {
+            embedCalls.incrementAndGet();
+            return new RagEmbeddingClient.Response(new double[]{1, 0}, PrecomputedEmbeddingIndex.MODEL, MAPPER.createObjectNode().put("total_tokens", 2));
+        };
+        JsonNode expected = c.get("expected");
+        RagGenerationClient generate = (instructions, input, schema) -> {
+            generateCalls.incrementAndGet();
+            JsonNode prompt = expected.path("metadata").path("prompt");
+            assertEquals(prompt.path("instructions").asText(), instructions);
+            assertEquals(parse(prompt.path("input").asText()), parse(input));
+            assertEquals(prompt.get("schema"), schema);
+            assertFalse(input.contains("cosine"));
+            assertFalse(parse(input).path("candidates").get(0).has("score"));
+            return c.get("response").deepCopy();
+        };
+        var service = new RagHSCodeAnalysisService(index, embed, generate, RagTestSupport.DELEGATE, c.get("retrieval_k").asInt());
+        var result = service.searchDetailed(c.get("query").asText(), c.get("top_k").asInt());
+        assertEquals(expected.get("status").asText(), result.status());
+        assertEquals(expected.get("missing_information"), MAPPER.valueToTree(result.missingInformation()));
+        assertEquals(c.get("embedding_calls").asInt(), embedCalls.get());
+        assertEquals(c.get("generation_calls").asInt(), generateCalls.get());
+        assertEquals(expected.get("candidates").size(), result.candidates().size());
+        for (int i = 0; i < result.candidates().size(); i++) {
+            var candidate = result.candidates().get(i); var py = expected.get("candidates").get(i);
+            assertEquals(py.get("code").asText(), candidate.code());
+            assertEquals(py.get("rank").asInt(), candidate.rank());
+            assertEquals(py.get("description").asText(), candidate.description());
+            assertEquals(py.get("explanation").isNull() ? null : py.get("explanation").asText(), candidate.explanation());
+            assertEquals(py.get("references"), MAPPER.valueToTree(candidate.references()));
+            assertEquals(2.5, candidate.score()); assertEquals("constant", candidate.scoreType());
+        }
+        for (String key : List.of("rejected_candidates", "model_status", "error_stage", "refusals"))
+            assertEquals(expected.path("metadata").get(key), result.metadata().get(key), key);
+        if (expected.path("metadata").has("retrieved_candidates")) {
+            var pythonHits = expected.path("metadata").get("retrieved_candidates");
+            var javaHits = result.metadata().get("retrieved_candidates");
+            assertEquals(pythonHits.size(), javaHits.size());
+            for (int i = 0; i < pythonHits.size(); i++) {
+                assertEquals(pythonHits.get(i).get("code"), javaHits.get(i).get("code"));
+                assertEquals(pythonHits.get(i).get("score").doubleValue(), javaHits.get(i).get("score").doubleValue(), 2e-6);
+            }
+        }
+        if (!expected.get("error").isNull()) {
+            assertEquals(expected.path("error").get("kind"), result.error().get("kind"));
+            assertThrows(HSCodeAnalysisException.class, () -> service.toSearchResult(result));
+        } else {
+            assertNull(result.error());
+            var adapted = service.toSearchResult(result);
+            assertEquals(result.candidates().stream().limit(5).map(RagResult.Candidate::code).toList(), adapted.matchingHSCodes().stream().map(hit -> hit.HSCode().toDigits()).toList());
+            assertTrue(adapted.matchingHSCodes().stream().allMatch(hit -> hit.score().score() == 3));
+            assertEquals(c.get("generation_calls").asInt(), generateCalls.get(), "Mapping must not call the model again");
+        }
+    }
+}
