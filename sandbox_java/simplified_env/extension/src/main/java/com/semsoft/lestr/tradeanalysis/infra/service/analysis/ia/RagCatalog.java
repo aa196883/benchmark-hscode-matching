@@ -11,7 +11,6 @@ import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.
 public final class RagCatalog {
     public record Row(String code, String description, String contextualDescription, boolean eligible) {}
     private final SortedMap<String, Row> rows;
-    private final String sha256;
 
     public RagCatalog(Path path) throws IOException {
         this(Files.newInputStream(path));
@@ -20,7 +19,6 @@ public final class RagCatalog {
     public RagCatalog(InputStream input) throws IOException {
         byte[] raw;
         try (input) { raw = input.readAllBytes(); }
-        sha256 = sha(raw);
         var loaded = new TreeMap<String, Row>();
         try (var parser = MAPPER.getFactory().createParser(raw)) {
             while (parser.nextToken() != null) {
@@ -39,14 +37,7 @@ public final class RagCatalog {
         require(!loaded.isEmpty(), "Empty catalogue");
         rows = Collections.unmodifiableSortedMap(loaded);
     }
-    public String sha256() { return sha256; }
     public Row row(String code) { return rows.get(code); }
-    public String rejectionReason(String code) {
-        if (code == null || !code.matches("[0-9]{6}")) return "invalid_format";
-        Row row = rows.get(code);
-        if (row == null) return "unknown_code";
-        return row.eligible() ? null : "ineligible_code";
-    }
     public List<Row> candidates() {
         var candidates = rows.values().stream().filter(Row::eligible).toList();
         require(!candidates.isEmpty(), "No eligible candidates");

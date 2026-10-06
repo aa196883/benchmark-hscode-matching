@@ -29,5 +29,4 @@ final class RagJson {
         catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
     }
     static String sha(byte[] bytes) { return HexFormat.of().formatHex(digest().digest(bytes)); }
-    static double seconds(long start) { return (System.nanoTime() - start) / 1_000_000_000d; }
 }

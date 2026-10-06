@@ -16,7 +16,7 @@ class IndexValidationTest {
         var index = RagTestSupport.index(directory);
         assertEquals(3, index.size()); assertEquals(2, index.dimensions());
         assertNull(index.configuredDimensions());
-        assertEquals(List.of("010121", "010129", "010130"), index.search(new double[]{1,0}, 20).stream().map(PrecomputedEmbeddingIndex.Hit::code).toList());
+        assertEquals(List.of("010121", "010129", "010130"), index.search(new double[]{1,0}, 20).stream().map(RagCatalog.Row::code).toList());
         assertArrayEquals(before, Files.readAllBytes(directory.resolve("vectors.jsonl")));
         assertThrows(IllegalArgumentException.class, () -> index.search(new double[]{1}, 2));
         assertThrows(IllegalArgumentException.class, () -> index.search(new double[]{0,0}, 2));
@@ -63,14 +63,12 @@ class IndexValidationTest {
             assertThrows(IllegalArgumentException.class, () -> RagTestSupport.index(directory), vector);
         }
     }
-    @Test void exactTiesUseCodeOrderAndManifestCannotMutateIndex() throws Exception {
+    @Test void exactTiesUseCodeOrder() throws Exception {
         var path = directory.resolve("vectors.jsonl"); var lines = Files.readAllLines(path);
         var row = (ObjectNode) parse(lines.get(1)); row.set("vector", parse("[1,0]")); lines.set(1, encode(row));
         Files.write(path, lines); updateChecksum();
         var index = RagTestSupport.index(directory);
-        assertEquals(List.of("010121", "010129"), index.search(new double[]{1,0},2).stream().map(PrecomputedEmbeddingIndex.Hit::code).toList());
-        ((ObjectNode) index.manifest()).put("count", 99);
-        assertEquals(3, index.manifest().get("count").intValue());
+        assertEquals(List.of("010121", "010129"), index.search(new double[]{1,0},2).stream().map(RagCatalog.Row::code).toList());
     }
     @Test void rejectsEmptyCatalogueDuplicateCodesWrongLanguageAndMissingContext() throws Exception {
         var path = directory.resolve("catalog.jsonl"); String original = Files.readString(path);

@@ -23,9 +23,9 @@ Les trois scores ont des rôles distincts :
 
 | Emplacement | Valeur | Usage |
 | --- | --- | --- |
-| `RagResult.candidates[].score` | **2.5**, `score_type="constant"` | Valeur d’affichage demandée, sans signification de confiance. |
+| `RagResult.candidates[].score` | **2.5** | Valeur d’affichage demandée, sans signification de confiance. |
 | `SearchResult.matchingHSCodes[].score` | **3**, entier | Adaptation approuvée au contrat `MatchingScore(int)`. |
-| `metadata.retrieved_candidates[].score` | Cosinus de récupération | Diagnostic de recherche, jamais une confiance du LLM. |
+| Calcul interne de récupération | Cosinus | Sert uniquement à sélectionner les voisins ; absent du résultat. |
 
 Aucun de ces scores fixes ne provoque un tri. Le LLM ne reçoit pas de nouvelle
 consigne de scoring et ne produit pas de pourcentage. L’explication par candidat
@@ -34,15 +34,15 @@ inventé. `null` est accepté pour une explication comme dans les cas de référ
 
 `searchDetailed(description)` retourne au plus cinq candidats.
 `searchDetailed(description, topK)` permet un N différent pour les expériences,
-toujours avec N ≤ K. Les états sont `ok`, `needs_info`, `abstained`, `error`.
-`missing_information` conserve les demandes de précision. Le résultat détaillé
-expose aussi les candidats récupérés, les rejets, le prompt et les durées.
-Il ne conserve pas l’enveloppe fournisseur, les usages ni les statuts techniques.
+toujours avec N ≤ K. Les états métier sont `ok`, `needs_info`, `abstained`.
+`missing_information` conserve les demandes de précision. Le résultat contient uniquement le statut, les questions et les candidats
+(code, rang, libellé, score et explication). Les métadonnées, références, types
+de score, erreurs structurées, prompts et chronométrages ne sont plus exposés.
 
 `searchFromDescription(description)` appelle le moteur puis l’adapte au contrat
 industriel, limité à cinq résultats. `toSearchResult(resultatDetaille)` permet de
-faire cette adaptation **sans rappeler les fournisseurs**. Les exceptions techniques remontent au secours industriel existant. Un résultat
-métier `error` devient `HSCodeAnalysisException` lors de la projection.
+faire cette adaptation **sans rappeler les fournisseurs**. Les exceptions techniques remontent au secours industriel existant. Si tous les
+codes proposés sont rejetés, `searchDetailed()` lève `HSCodeAnalysisException`.
 Une abstention produit une liste vide ; un `needs_info` conserve ses candidats
 provisoires s’il en contient. Le contrat existant ne peut pas exposer les questions
 ni distinguer une abstention d’une liste vide : les appelants qui en ont besoin
@@ -109,8 +109,9 @@ L’index est chargé une fois par construction de service, avec fermeture des f
 sans extraction temporaire. Il n’est pas mis en cache dans un champ statique.
 Un fichier manquant produit une `FileNotFoundException` indiquant son chemin de
 classpath ; un contenu incompatible est rejeté par les mêmes validations.
-`loadIndex()` expose ce chargement sans créer de client réseau. La métadonnée
-`index_path` vaut désormais `classpath:/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/h6_2022/`.
+`loadIndex()` expose ce chargement sans créer de client réseau. Le manifeste
+est utilisé lors du chargement, puis libéré ; l’index ne conserve aucun chemin
+ni copie du manifeste pour diagnostic.
 Les constructeurs de bas niveau prenant des chemins restent disponibles pour les
 outils de rejeu et les tests ; ils ne font plus partie de la factory du service.
 
@@ -135,8 +136,8 @@ sandbox_java/simplified_env/dev.sh run rag-replay \
 ```
 
 La CLI imprime un objet JSON contenant `prediction` (résultat détaillé),
-`search_result` (projection industrielle) et `replay`. Le code de sortie est 1
-si le RAG produit `error`, 0 sinon. Un échec de chargement/configuration arrête la
+`search_result` (projection industrielle). Le code de sortie est 0 en cas de
+succès ; une exception arrête la commande avec un code non nul. Un échec de chargement/configuration arrête la
 commande avec une exception et un code non nul. Le rejeu reçoit un tableau JSON
 de composantes du vecteur et le **JSON métier directement** (`status`, `missing_information`, `candidates`),
 sans enveloppe Responses API.
@@ -181,12 +182,11 @@ métier est conservée. Un texte de refus non JSON échoue donc au parsing.
 
 ## Vérifications et limites de parité
 
-La simplification a été vérifiée par **31 tests ciblés**, dont **15 cas métier
-issus du moteur de référence** : ordre, explications nullables, questions,
-abstention, codes rejetés, doublons et rangs conservés. Les tests du client
-utilisent des modèles LangChain4j simulés, sans serveur HTTP ni appel OpenAI.
-Ils vérifient les messages, le schéma, les sorties et la propagation des erreurs.
-Les tests du service et du chargement depuis un JAR ont également été exécutés.
+Le retrait des données techniques est vérifié par **38 tests ciblés**, dont
+**15 cas métier issus du moteur de référence** : ordre, explications nullables,
+questions, abstention, codes rejetés, doublons et rangs conservés. Les comparaisons
+JSON vérifient aussi l’absence de champs techniques. Les tests du service, de
+l’index et du chargement par flux ou depuis un JAR sont exécutés sans appel OpenAI.
 
 Les anciens cas portant sur les enveloppes fournisseur et les validations
 supplémentaires ont été retirés. La parité porte sur le parcours métier et la
@@ -206,21 +206,17 @@ Comparer le JAR au moteur de référence sur l’index réel, sans appeler d’A
 .venv/bin/python sandbox_java/scripts/verify_rag_parity.py --classpath
 ```
 
-Ce script recharge l’index complet et compare quatre vecteurs de requête figés
-issus de cet index, répartis entre les codes `010121`, `350219`, `721550` et
-`970690`. Il compare les 20 voisins, le prompt, le schéma et le classement final,
-avec une réponse LLM rejouée. Sur la vérification effectuée, **les 20 voisins et
-leur ordre sont identiques dans les quatre cas** ; l’écart cosinus maximal est
-`2.384185791015625e-7`. Le rapport est écrit dans
-`simplified_env/extension/target/full-index-parity.json`.
+Ce script recharge l’index complet et compare les résultats métier sur quatre
+vecteurs de requête figés avec une réponse LLM rejouée : codes, rangs,
+explications, questions et scores fixes. Il ne compare plus les diagnostics de
+récupération ni les prompts via le résultat public. Le prompt et le schéma sont
+vérifiés directement à l’appel du client simulé dans les tests Java.
+Le rapport est écrit dans `simplified_env/extension/target/full-index-parity.json`.
+Ce script n’a pas été relancé lors de la suppression des métadonnées.
 
-La normalisation et le calcul de cosinus Java utilisent une matrice float32,
-avec accumulation du produit scalaire en double puis arrondi float32. NumPy/BLAS
-peut accumuler différemment. Les scores ne sont donc pas garantis identiques bit
-à bit ; des valeurs extrêmement proches peuvent modifier un ordre de voisins.
-Les égalités exactes sont départagées par code comme dans la configuration initiale. Le test utilise
-une tolérance de `2e-6` sur les scores et exige le même ordre sur les cas vérifiés.
-Il ne prétend pas prouver la parité pour toutes les requêtes possibles.
+Le calcul de cosinus interne conserve la matrice float32 et l’accumulation en
+double. Les égalités sont départagées par code ; des différences d’arrondi avec
+le moteur de référence restent possibles pour des scores très proches.
 
 Les tests n’évaluent pas la pertinence métier d’un modèle réel : ils vérifient le
 portage et les règles de traitement. Aucun appel OpenAI réel ni test dans le dépôt

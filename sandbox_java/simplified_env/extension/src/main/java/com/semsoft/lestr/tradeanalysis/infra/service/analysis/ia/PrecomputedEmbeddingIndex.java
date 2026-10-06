@@ -1,6 +1,5 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -12,28 +11,23 @@ import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.
 /** Immutable exact cosine index. Loads precomputed resources once; never computes catalogue embeddings. */
 public final class PrecomputedEmbeddingIndex {
     public static final String MODEL = "text-embedding-3-small";
-    public record Hit(String code, int rank, double score, String description,
-                      @JsonProperty("contextual_description") String contextualDescription) {}
     @FunctionalInterface
     public interface ResourceOpener {
         InputStream open(String name) throws IOException;
     }
-    private final String location;
     private final RagCatalog catalog;
-    private final JsonNode manifest;
     private final List<RagCatalog.Row> rows;
     private final float[][] matrix;
     private final int dimensions;
     private final Integer configuredDimensions;
 
     public PrecomputedEmbeddingIndex(Path directory, RagCatalog catalog) throws IOException {
-        this(directory.toAbsolutePath().normalize().toString(),
-                name -> Files.newInputStream(directory.resolve(name)), catalog);
+        this(name -> Files.newInputStream(directory.resolve(name)), catalog);
     }
-    /** Reads and closes each resource stream; location is an identifier for diagnostics only. */
-    public PrecomputedEmbeddingIndex(String location, ResourceOpener resources, RagCatalog catalog) throws IOException {
-        this.location = Objects.requireNonNull(location);
+    /** Reads and closes each resource stream. */
+    public PrecomputedEmbeddingIndex(ResourceOpener resources, RagCatalog catalog) throws IOException {
         this.catalog = Objects.requireNonNull(catalog);
+        JsonNode manifest;
         try (var input = resources.open("manifest.json")) {
             manifest = parse(new String(input.readAllBytes(), StandardCharsets.UTF_8));
         }
@@ -77,7 +71,7 @@ public final class PrecomputedEmbeddingIndex {
         }
         require(count == rows.size() && HexFormat.of().formatHex(digest.digest()).equals(manifest.path("vectors_sha256").asText()), "Incomplete index or invalid vectors checksum");
     }
-    public List<Hit> search(double[] vector, int topK) {
+    public List<RagCatalog.Row> search(double[] vector, int topK) {
         require(topK > 0, "topK must be positive");
         double norm = validate(vector, dimensions);
         float[] query = new float[dimensions];
@@ -92,10 +86,9 @@ public final class PrecomputedEmbeddingIndex {
             order[i] = i;
         }
         Arrays.sort(order, Comparator.<Integer>comparingDouble(i -> scores[i]).reversed().thenComparing(i -> rows.get(i).code()));
-        var result = new ArrayList<Hit>();
+        var result = new ArrayList<RagCatalog.Row>();
         for (int rank = 0; rank < Math.min(topK, order.length); rank++) {
-            int i = order[rank]; var row = rows.get(i);
-            result.add(new Hit(row.code(), rank + 1, scores[i], row.description(), row.contextualDescription()));
+            result.add(rows.get(order[rank]));
         }
         return List.copyOf(result);
     }
@@ -122,7 +115,5 @@ public final class PrecomputedEmbeddingIndex {
     public int dimensions() { return dimensions; }
     public Integer configuredDimensions() { return configuredDimensions; }
     public RagCatalog catalog() { return catalog; }
-    public JsonNode manifest() { return manifest.deepCopy(); }
-    public String location() { return location; }
     public int size() { return rows.size(); }
 }

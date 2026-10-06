@@ -74,7 +74,10 @@ class RagServiceTest {
         assertThrows(IllegalArgumentException.class, () -> new RagHSCodeAnalysisService(index, client, generate(), RagTestSupport.DELEGATE,20));
     }
     @Test void sharedIndexAndServiceSupportConcurrentCallsWithoutSharedResultState() throws Exception {
-        var service = new RagHSCodeAnalysisService(index, embed(), generate(), RagTestSupport.DELEGATE,20);
+        RagGenerationClient generation = (instructions, input, schema) -> encode(Map.of(
+                "status", "ok", "missing_information", List.of(), "candidates", List.of(Map.of(
+                        "code", "010121", "explanation", parse(input).path("product_description").asText()))));
+        var service = new RagHSCodeAnalysisService(index, embed(), generation, RagTestSupport.DELEGATE,20);
         try (var executor = Executors.newFixedThreadPool(4)) {
             var tasks = new ArrayList<Callable<RagResult>>();
             for (int i=0; i<12; i++) { String description="horses " + i; tasks.add(() -> service.searchDetailed(description)); }
@@ -82,7 +85,7 @@ class RagServiceTest {
             for (int i=0; i<results.size(); i++) {
                 var result = results.get(i).get();
                 assertEquals("ok", result.status());
-                assertEquals("horses " + i, parse(result.metadata().path("prompt").path("input").asText()).path("product_description").asText());
+                assertEquals("horses " + i, result.candidates().getFirst().explanation());
                 assertEquals(2.5, result.candidates().getFirst().score());
             }
         }

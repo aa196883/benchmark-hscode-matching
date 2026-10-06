@@ -62,14 +62,10 @@ final class RagMain {
         var prediction = service.searchDetailed(args[descriptionPosition], topK);
         var output = JSON.createObjectNode();
         output.set("prediction", JSON.valueToTree(prediction));
-        output.put("replay", replay);
-        if (prediction.status().equals("error")) output.putNull("search_result");
-        else {
-            var adapted = service.toSearchResult(prediction);
-            output.set("search_result", JSON.valueToTree(Map.of("source", adapted.source().name(), "matchingHSCodes",
-                    adapted.matchingHSCodes().stream().map(hit -> Map.of("code", hit.HSCode().toDigits(), "score", hit.score().score())).toList())));
-        }
+        var adapted = service.toSearchResult(prediction);
+        output.set("search_result", JSON.valueToTree(Map.of("source", adapted.source().name(), "matchingHSCodes",
+                adapted.matchingHSCodes().stream().map(hit -> Map.of("code", hit.HSCode().toDigits(), "score", hit.score().score())).toList())));
         System.out.println(JSON.writeValueAsString(output));
-        return prediction.status().equals("error") ? 1 : 0;
+        return 0;
     }
 }

@@ -55,12 +55,15 @@ def main():
         vectorizer.embed.reset_mock()
         result = RAG(provider, ModelConfig(model='test-llm'), retriever, retrieval_k).predict(query, top_k, PredictionContext(catalog))
         expected = result.to_dict()
-        metadata = expected['metadata']
-        expected['metadata'] = {key: metadata[key] for key in ('rejected_candidates', 'model_status', 'prompt', 'retrieved_candidates') if key in metadata}
-        if expected['error']:
-            expected['error'] = {'kind': expected['error']['kind']}
-        cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query, top_k=top_k, retrieval_k=retrieval_k,
-                          embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=expected))
+        prompt = expected.pop('metadata')['prompt']
+        fails = expected.pop('error') is not None
+        for candidate in expected['candidates']:
+            candidate.pop('references', None)
+            candidate.pop('score_type', None)
+            candidate['score'] = 2.5  # Java business display score, independent of the reference score.
+        cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query,
+                          top_k=top_k, retrieval_k=retrieval_k, prompt=prompt, fails=fails,
+                          embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=None if fails else expected))
     add('llm_order', envelope(['010129', '010121']))
     add('null_explanation', envelope(['010121'], explanation=None))
     add('needs_info_with_candidates', envelope(['010129'], 'needs_info', ['Intended use?']))

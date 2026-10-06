@@ -288,8 +288,8 @@ pas un nouveau parent Maven à imposer au projet cible.
 
 ## 5. Vérifications effectuées
 
-Le socle conserve ses tests de compatibilité. La simplification du client RAG
-a été vérifiée par **31 tests ciblés**, dont 15 cas métier de référence.
+Le socle conserve ses tests de compatibilité. Le retrait des champs techniques du RAG
+a été vérifié par **38 tests ciblés**, dont 15 cas métier de référence.
 Les anciens tests des enveloppes fournisseur ont été retirés. Le JAR a été exécuté en démonstration,
 en analyse simulée et en rejeu RAG ; les scripts fonctionnent depuis un autre
 répertoire. L’index réel et l’archive exportée ont fait l’objet de vérifications

@@ -25,7 +25,6 @@ class ClasspathLoadingTest {
             assertEquals("jar", serviceClass.getResource("h6_2022/catalog.jsonl").getProtocol());
             Object index = serviceClass.getMethod("loadIndex").invoke(null);
             assertEquals(3, index.getClass().getMethod("size").invoke(index));
-            assertEquals("classpath:/" + PREFIX + "h6_2022/", index.getClass().getMethod("location").invoke(index));
             var service = (HSCodeAnalysisService) serviceClass.getMethod("construct", OpenAIProperties.class, HSCodeAnalysisService.class)
                     .invoke(null, new OpenAIProperties("unused-offline-key"), RagTestSupport.DELEGATE);
             assertEquals("description 010121", service.analyse("description", HSCode.hsCode("010121")).analyse());

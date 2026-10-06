@@ -52,13 +52,21 @@ Le constructeur prenant un index et des clients reste disponible pour les tests
 et l’injection de configuration. `loadIndex()` charge le même index embarqué sans
 créer de client réseau. Les constructeurs de bas niveau acceptant des chemins
 restent utilisables par les outils de rejeu ; la factory du service ne prend plus
-de chemins. La métadonnée `index_path` devient un identifiant `classpath:/.../h6_2022/`.
+de chemins. Le constructeur par flux de l’index reçoit uniquement un
+`ResourceOpener` et le catalogue.
 
-Le service utilise `Source.OpenAI_Hybrid`. Une erreur de recherche devient
+Le service utilise `Source.OpenAI_Hybrid`. Un rejet de tous les candidats lève
 `HSCodeAnalysisException` ; une abstention retourne une liste vide. `analyse()`
 reste déléguée. `searchDetailed()` conserve explications et questions avec le score
 constant 2.5 ; `toSearchResult()` projette vers le score industriel 3 sans autre
 appel réseau ni reclassement.
+
+Le contrat `RagResult` contient uniquement `status`, `candidates` et
+`missing_information`. Chaque candidat contient `code`, `rank`, `description`,
+`score` et `explanation`. Adapter les éventuels consommateurs de `metadata`,
+`error`, `references` et `score_type`, désormais supprimés. Les erreurs remontent
+par exception dès la recherche. L’index retourne les lignes du catalogue triées,
+sans DTO de diagnostic ni exposition du manifeste.
 
 ## Client fournisseur LangChain4j
 

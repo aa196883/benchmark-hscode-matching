@@ -1,4 +1,4 @@
-"""Compare the reference implementation and the packaged Java RAG on the full index, without API calls."""
+"""Compare business results of the reference implementation and packaged Java RAG, without API calls."""
 from pathlib import Path
 import argparse
 import json
@@ -55,20 +55,12 @@ def main():
             completed = subprocess.run(command, check=True, text=True, capture_output=True, cwd=folder, timeout=90)
             output = json.loads(completed.stdout); java = output['prediction']
             assert java['status'] == py.status == 'ok'
-            if args.classpath:
-                assert java['metadata']['index_path'] == 'classpath:/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/h6_2022/'
             assert [(c['code'],c['rank'],c['explanation']) for c in java['candidates']] == [(c.code,c.rank,c.explanation) for c in py.candidates]
-            java_hits = java['metadata']['retrieved_candidates']
-            assert [h['code'] for h in java_hits] == [h.code for h in hits], f'Retrieval order differs for position {position}'
-            max_error = max(abs(j['score']-p.score) for j,p in zip(java_hits,hits))
-            assert max_error <= 2e-6, max_error
-            assert java['metadata']['prompt']['instructions'] == py.metadata['prompt']['instructions']
-            assert java['metadata']['prompt']['schema'] == py.metadata['prompt']['schema']
-            assert json.loads(java['metadata']['prompt']['input']) == json.loads(py.metadata['prompt']['input'])
+            assert java['missing_information'] == py.to_dict()['missing_information']
             assert all(c['score'] == 2.5 for c in java['candidates'])
             assert [c['code'] for c in output['search_result']['matchingHSCodes']] == selected
             assert all(c['score'] == 3 for c in output['search_result']['matchingHSCodes'])
-            reports.append({'query_index_code':index.codes[position], 'retrieval_k':20, 'same_order':True, 'max_cosine_error':max_error})
+            reports.append({'query_index_code':index.codes[position], 'retrieval_k':20, 'same_candidates':True})
     report = {'index_count':len(index.codes), 'dimensions':index.manifest['dimensions'],
               'vectors_sha256':index.manifest['vectors_sha256'], 'api_calls':0, 'resource_mode':'classpath' if args.classpath else 'filesystem', 'cases':reports}
     target = ROOT/'sandbox_java/simplified_env/extension/target/full-index-parity.json'
