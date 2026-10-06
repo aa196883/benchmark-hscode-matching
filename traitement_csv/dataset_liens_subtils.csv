@@ -1,0 +1,41 @@
+HS code marchandise,description marchandise,nom entreprise,url site entreprise,sens import/export,verdict_expectation
+280920,Phosphoric acid and polyphosphoric acids,Thanet Earth,https://www.thanetearth.com/,IMPORT,plausible
+283429,Nitrates; of other than potassium,Thanet Earth,https://www.thanetearth.com/,IMPORT,plausible
+152110,Vegetable waxes (other than triglycerides); whether or not refined or coloured,Sunkist Growers,https://sunkist.com/,IMPORT,plausible
+250810,"Clays (excluding expanded clays of heading no. 6806); bentonite, whether or not calcined",Familia Torres,https://www.torres.es/en,IMPORT,plausible
+251200,"Siliceous fossil meals (e.g. kieselguhr, tripolite and diatomite) and similar siliceous earths; whether or not calcined, of an apparent specific gravity of 1 or less",HEINEKEN,https://www.heineken.com/global/en/our-products,IMPORT,plausible
+380290,"Chemical products; activated natural mineral products, animal black, including spent animal black",AAK,https://www.aak.com/,IMPORT,plausible
+252210,Quicklime; excluding calcium oxide and hydroxide of heading no. 2825,British Sugar,https://www.britishsugar.co.uk/,IMPORT,plausible
+350510,Dextrins and other modified starches,Mondi,https://www.mondigroup.com/,IMPORT,plausible
+283620,Carbonates; disodium carbonate,Verallia,https://www.verallia.com/en/,IMPORT,plausible
+260900,Tin ores and concentrates,Pilkington,https://www.pilkington.com/en/global,IMPORT,plausible
+252922,Fluorspar; containing by weight more than 97% of calcium fluoride,ArcelorMittal Belgium,https://belgium.arcelormittal.com/en/,IMPORT,plausible
+282630,Sodium hexafluoroaluminate (synthetic cryolite),Aluminium Bahrain (Alba),https://www.albasmelter.com/,IMPORT,plausible
+252520,Mica; powder,Nexans,https://www.nexans.com/,IMPORT,plausible
+280429,"Gases, rare; other than argon",Taiwan Semiconductor Manufacturing Company (TSMC),https://www.tsmc.com/english,IMPORT,plausible
+280430,Nitrogen,Infineon Technologies,https://www.infineon.com/,IMPORT,plausible
+280300,Carbon; carbon blacks and other forms of carbon n.e.c.,Nokian Tyres,https://company.nokiantyres.com/,IMPORT,plausible
+320290,"Tanning substances; inorganic tanning substances; tanning preparations, whether or not containing natural tanning substances; enzymatic preparations for pre- tanning",Gruppo Mastrotto,https://www.mastrotto.com/en/,IMPORT,plausible
+284700,Hydrogen peroxide; whether or not solidified with urea,Welspun Living,https://www.welspunliving.com/,IMPORT,plausible
+282720,Chlorides; of calcium,Arla Foods,https://www.arla.com/,IMPORT,plausible
+281121,Carbon dioxide,Danish Crown,https://www.danishcrown.com/global/,IMPORT,plausible
+170390,"Sugars; molasses, from sugar beet, resulting from the extraction or refining of sugar",British Sugar,https://www.britishsugar.co.uk/,EXPORT,plausible
+230330,Brewing or distilling dregs and waste; whether or not in the form of pellets,HEINEKEN,https://www.heineken.com/global/en/our-products,EXPORT,plausible
+230330,Brewing or distilling dregs and waste; whether or not in the form of pellets,Archer Daniels Midland (ADM),https://www.adm-asia.com/,EXPORT,plausible
+440131,"Wood; for fuel, sawdust and wood waste and scrap, agglomerated in wood pellets",Stora Enso,https://www.storaenso.com/en,EXPORT,plausible
+440141,"Wood; for fuel, sawdust and wood waste and scrap, not agglomerated; sawdust",Södra,https://www.sodra.com/en/global/,EXPORT,plausible
+230400,"Oil-cake and other solid residues; whether or not ground or in the form of pellets, resulting from the extraction of soya-bean oil",Louis Dreyfus Company,https://www.ldc.com/,EXPORT,plausible
+230230,"Bran, sharps and other residues; of wheat, whether or not in the form of pellets, derived from the sifting, milling or other workings thereof",Olam Agri,https://www.olamagri.com/,EXPORT,plausible
+081400,"Peel; of citrus fruit or melons (including watermelons), fresh, frozen, dried or provisionally preserved in brine, in sulphur water and other preservative solutions",Louis Dreyfus Company,https://www.ldc.com/,EXPORT,plausible
+080810,"Fruit, edible; apples, fresh",Westons Cider,https://www.westons-cider.co.uk/,EXPORT,plausible
+040410,"Dairy produce; whey, whether or not concentrated or containing added sugar or other sweetening matter",Arla Foods,https://www.arla.com/,EXPORT,plausible
+410150,"Hides and skins; raw, whole, of bovine or equine animals, of a weight per skin exceeding 16 kg",Danish Crown,https://www.danishcrown.com/global/,EXPORT,plausible
+150190,Poultry fat; other than that of heading 0209 or 1503,Danish Crown,https://www.danishcrown.com/global/,EXPORT,plausible
+090190,"Coffee; husks and skins, coffee substitutes containing coffee in any proportion",ofi (Olam Food Ingredients),https://www.ofi.com/en-us,EXPORT,plausible
+121300,"Cereal straw and husks; unprepared, whether or not chopped, ground, pressed or in the form of pellets",KRBL Limited,https://krblrice.com/,EXPORT,plausible
+230320,"Beet-pulp, bagasse and other waste of sugar manufacture; whether or not in the form of pellets",ABF Sugar,https://www.abfsugar.com/,EXPORT,plausible
+261800,"Slag, granulated (slag sand); from the manufacture or iron or steel",ArcelorMittal Belgium,https://belgium.arcelormittal.com/en/,EXPORT,plausible
+262040,"Slag, ash and residues; (not from the manufacture of iron or steel), containing mainly aluminium",Hydro,https://www.hydro.com/en/en/,EXPORT,plausible
+230120,"Flours, meals and pellets; of fish or of crustaceans, molluscs or other aquatic invertebrates",Pelagia,https://www.pelagia.com/,EXPORT,plausible
+110813,Starch; potato,Royal Avebe,https://www.avebe.com/,EXPORT,plausible
+380300,"Chemical products; tall oil, whether or not refined",Södra,https://www.sodra.com/en/global/,EXPORT,plausible
