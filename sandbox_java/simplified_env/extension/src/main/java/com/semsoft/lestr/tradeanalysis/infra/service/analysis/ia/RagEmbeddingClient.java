@@ -1,11 +1,8 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
-/** Injectable query vectorizer. No catalogue indexing is performed at inference. */
+/** Vectorizes the query without rebuilding the catalogue index. */
+@FunctionalInterface
 public interface RagEmbeddingClient {
-    record Response(double[] vector, String model, JsonNode usage) {}
-    Response embed(String description);
-    default String model() { return PrecomputedEmbeddingIndex.MODEL; }
+    double[] embed(String description);
     default Integer dimensions() { return null; }
 }

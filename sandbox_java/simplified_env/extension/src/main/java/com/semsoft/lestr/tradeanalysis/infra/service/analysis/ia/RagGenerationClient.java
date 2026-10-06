@@ -2,10 +2,8 @@ package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-/** Returns the complete Responses API envelope, including refusals and completion status. */
+/** Generates the JSON answer as text, independently of the provider protocol. */
 @FunctionalInterface
 public interface RagGenerationClient {
-    JsonNode generate(String instructions, String input, JsonNode schema);
-    default String provider() { return "openai"; }
-    default JsonNode configuration() { return RagJson.MAPPER.createObjectNode(); }
+    String generate(String instructions, String input, JsonNode schema);
 }

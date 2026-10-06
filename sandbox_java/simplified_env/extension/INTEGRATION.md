@@ -26,7 +26,8 @@ Les empreintes sont vérifiées au chargement. Le nom du dossier Maven est
 n’est nécessaire : les ressources sont lues comme des flux du classpath.
 
 Ne pas ajouter les classes/JAR de compatibilité ou le runner local au projet
-industriel. Les sources ont besoin de Java 21, Jackson Databind et des contrats
+industriel. Les sources ont besoin de Java 21, Jackson Databind, LangChain4j 1.20.0
+(`langchain4j-open-ai`) et des contrats
 industriels existants. Les tests utilisent JUnit Jupiter ; la completion conserve
 ses dépendances habituelles.
 
@@ -59,6 +60,20 @@ reste déléguée. `searchDetailed()` conserve explications et questions avec le
 constant 2.5 ; `toSearchResult()` projette vers le score industriel 3 sans autre
 appel réseau ni reclassement.
 
+## Client fournisseur LangChain4j
+
+`OpenAiRagClient` utilise directement les modèles LangChain4j, sans `ChatService`
+ni code de transport HTTP. `RagGenerationClient.generate()` retourne le texte
+JSON métier ; `RagEmbeddingClient.embed()` retourne uniquement un `double[]`.
+Le constructeur injectable reçoit un `ChatModel`, un `EmbeddingModel` et les
+dimensions configurées. `Config` ne contient plus de délai ; les modèles
+utilisent leurs valeurs par défaut ou la configuration fournie à l’injection.
+
+Le service désérialise le texte avec Jackson et conserve le filtrage des codes.
+Les erreurs techniques remontent à la chaîne de secours. L’enveloppe brute,
+les usages, les refus techniques et les diagnostics HTTP ne font plus partie
+du résultat détaillé. Les fichiers de rejeu contiennent le JSON métier seul.
+
 ## Test manuel et vérifications
 
 `RagHSCodeServiceMT` utilise `System.getenv("OPENAI_API_KEY")` à la place de
@@ -78,5 +93,4 @@ et la sélection de module habituels avec les mêmes options de test.
 Vérifier dans le module cible la présence des cinq ressources dans le JAR final,
 le démarrage depuis un autre répertoire, la configuration OpenAI et les appels
 métier. Les tests exportés couvrent le chargement depuis un JAR isolé, les fichiers
-absents/corrompus, la fermeture des flux, les cas de référence et le protocole HTTP
-local. Aucun test OpenAI réel n’a été lancé lors de cette mise à jour.
+absents/corrompus, la fermeture des flux, les cas métier et les appels à des modèles LangChain4j simulés. Aucun test OpenAI réel n’a été lancé lors de cette mise à jour.

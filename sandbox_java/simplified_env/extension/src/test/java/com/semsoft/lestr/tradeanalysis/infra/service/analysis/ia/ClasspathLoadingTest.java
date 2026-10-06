@@ -29,8 +29,9 @@ class ClasspathLoadingTest {
             var service = (HSCodeAnalysisService) serviceClass.getMethod("construct", OpenAIProperties.class, HSCodeAnalysisService.class)
                     .invoke(null, new OpenAIProperties("unused-offline-key"), RagTestSupport.DELEGATE);
             assertEquals("description 010121", service.analyse("description", HSCode.hsCode("010121")).analyse());
-            Object detailed = serviceClass.getMethod("searchDetailed", String.class).invoke(service, "");
-            assertEquals("error", detailed.getClass().getMethod("status").invoke(detailed));
+            var error = assertThrows(InvocationTargetException.class,
+                    () -> serviceClass.getMethod("searchDetailed", String.class).invoke(service, ""));
+            assertInstanceOf(IllegalArgumentException.class, error.getCause());
         }
     }
     @Test void missingCatalogueNamesTheClasspathResource() throws Exception { missing("catalog.jsonl"); }

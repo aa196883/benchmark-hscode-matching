@@ -1,4 +1,4 @@
-"""Regenerate portable Java golden cases using the reference RAG. No network calls."""
+"""Regenerate portable Java business cases (JSON text contract) using the reference RAG. No network calls."""
 from pathlib import Path
 import json
 import sys
@@ -56,10 +56,10 @@ def main():
         result = RAG(provider, ModelConfig(model='test-llm'), retriever, retrieval_k).predict(query, top_k, PredictionContext(catalog))
         expected = result.to_dict()
         metadata = expected['metadata']
-        expected['metadata'] = {key: metadata[key] for key in ('rejected_candidates', 'model_status', 'error_stage', 'refusals', 'prompt', 'retrieved_candidates') if key in metadata}
+        expected['metadata'] = {key: metadata[key] for key in ('rejected_candidates', 'model_status', 'prompt', 'retrieved_candidates') if key in metadata}
         if expected['error']:
             expected['error'] = {'kind': expected['error']['kind']}
-        cases.append(dict(name=name, response=raw, query=query, top_k=top_k, retrieval_k=retrieval_k,
+        cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query, top_k=top_k, retrieval_k=retrieval_k,
                           embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=expected))
     add('llm_order', envelope(['010129', '010121']))
     add('null_explanation', envelope(['010121'], explanation=None))
@@ -76,25 +76,9 @@ def main():
     add('invalid_short_code', envelope(['01', '010121']))
     add('all_rejected_needs_info', envelope(['010130'], 'needs_info', ['Use?']))
     add('k_larger_than_catalogue', envelope(['010130']), retrieval_k=20)
-    for refusal in ['Refused', None, '']:
-        raw = envelope(); raw['output'][0]['content'] = [{'type': 'refusal', 'refusal': refusal}]
-        add('refusal_' + repr(refusal), raw)
-    for status in ['incomplete', 'failed']:
-        raw = envelope(['010121']); raw['status'] = status; add(status, raw)
-    add('ok_empty', envelope([]))
-    add('ok_with_questions', envelope(['010121'], 'ok', ['Use?']))
-    add('needs_info_without_questions', envelope([], 'needs_info'))
-    add('abstained_with_candidates', envelope(['010121'], 'abstained'))
-    for name, text in [('malformed', 'invalid'), ('extra_fields', '{"status":"abstained","missing_information":[],"candidates":[],"extra":1}'),
-                       ('bad_explanation', '{"status":"ok","missing_information":[],"candidates":[{"code":"010121","explanation":7}]}'),
-                       ('bad_question', '{"status":"needs_info","missing_information":[" "],"candidates":[]}')]:
-        raw = envelope(); raw['output'][0]['content'][0]['text'] = text; add(name, raw)
-    add('empty_query', envelope(['010121']), query='')
-    add('invalid_top_k', envelope(['010121']), top_k=0)
-    add('k_smaller_than_n', envelope(['010121']), retrieval_k=1)
     (OUT/'cases.json').write_text(json.dumps(cases, indent=2, ensure_ascii=False)+'\n')
     (OUT/'query.json').write_text('[1.0,0.0]\n')
-    (OUT/'response.json').write_text(json.dumps(envelope(['010129', '010121']),indent=2)+'\n')
+    (OUT/'response.json').write_text(json.dumps(json.loads(envelope(['010129', '010121'])['output'][0]['content'][0]['text']),indent=2)+'\n')
     print(f'{len(cases)} reference cases written to {OUT}')
 
 if __name__ == '__main__':

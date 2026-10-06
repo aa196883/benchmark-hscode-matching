@@ -15,7 +15,7 @@ Le service exécute le parcours suivant :
 4. Fournir leurs codes, descriptions et descriptions contextualisées au LLM,
    sans lui transmettre les scores cosinus. Le prompt `rag_v1` est chargé depuis les ressources du package. Le schéma restreint les codes aux voisins récupérés.
 5. Valider la réponse et conserver l’ordre du LLM, les explications, les questions,
-   l’abstention et les refus. Rejeter les codes invalides, inconnus, inadmissibles,
+   l’abstention métier. Rejeter les codes invalides, inconnus, inadmissibles,
    hors récupération, dupliqués ou au-delà du rang N. Ne pas compléter la liste
    après rejet ; conserver les rangs originaux, même s’ils deviennent discontinus.
 
@@ -36,13 +36,13 @@ inventé. `null` est accepté pour une explication comme dans les cas de référ
 `searchDetailed(description, topK)` permet un N différent pour les expériences,
 toujours avec N ≤ K. Les états sont `ok`, `needs_info`, `abstained`, `error`.
 `missing_information` conserve les demandes de précision. Le résultat détaillé
-expose aussi les candidats récupérés, les rejets, le prompt, la réponse brute,
-les usages de tokens, la configuration et les durées.
+expose aussi les candidats récupérés, les rejets, le prompt et les durées.
+Il ne conserve pas l’enveloppe fournisseur, les usages ni les statuts techniques.
 
 `searchFromDescription(description)` appelle le moteur puis l’adapte au contrat
 industriel, limité à cinq résultats. `toSearchResult(resultatDetaille)` permet de
-faire cette adaptation **sans rappeler les fournisseurs**. Une erreur devient
-`HSCodeAnalysisException`, donc peut activer le secours industriel existant.
+faire cette adaptation **sans rappeler les fournisseurs**. Les exceptions techniques remontent au secours industriel existant. Un résultat
+métier `error` devient `HSCodeAnalysisException` lors de la projection.
 Une abstention produit une liste vide ; un `needs_info` conserve ses candidats
 provisoires s’il en contient. Le contrat existant ne peut pas exposer les questions
 ni distinguer une abstention d’une liste vide : les appelants qui en ont besoin
@@ -138,7 +138,8 @@ La CLI imprime un objet JSON contenant `prediction` (résultat détaillé),
 `search_result` (projection industrielle) et `replay`. Le code de sortie est 1
 si le RAG produit `error`, 0 sinon. Un échec de chargement/configuration arrête la
 commande avec une exception et un code non nul. Le rejeu reçoit un tableau JSON
-de composantes du vecteur et une **enveloppe Responses API complète**.
+de composantes du vecteur et le **JSON métier directement** (`status`, `missing_information`, `candidates`),
+sans enveloppe Responses API.
 
 Appel réel, après configuration de `OPENAI_API_KEY` dans l’environnement :
 
@@ -148,35 +149,49 @@ sandbox_java/simplified_env/dev.sh run rag \
 ```
 
 Cette commande consomme une vectorisation de requête et une génération. Par défaut,
-le LLM est `gpt-4.1-mini`, la limite de sortie 2048 tokens et le délai de chaque appel
-60 secondes, comme dans la configuration initiale. Température et effort de raisonnement ne sont pas
-envoyés par défaut. `OpenAiRagClient.Config` permet de les régler par injection Java.
+le LLM est `gpt-4.1-mini` et la limite de sortie 2048 tokens.
+Température et effort de raisonnement ne sont pas envoyés par défaut. `OpenAiRagClient.Config` permet de les régler par injection Java.
 Les dimensions de requête sont issues de `manifest.config.dimensions` ; une valeur
 nulle signifie ne pas envoyer le paramètre et utiliser la dimension native du modèle.
 Le vecteur reçu est ensuite contrôlé contre les 1 536 dimensions effectives de l’index.
 
-Le nouveau client utilise `java.net.http.HttpClient` et Jackson 2.21.4, avec les
-mêmes endpoints `/embeddings` et `/responses` et les mêmes corps de requête que
-Python. Il préserve `status`, refus, usages et réponse brute, informations que le
-`ChatService` existant ne retourne pas. Il envoie `store=false` et n’ajoute pas de
-reprise automatique. Les erreurs HTTP sont assainies : code HTTP et identifiant
-de requête sont conservés, mais pas le corps d’erreur ni les en-têtes d’autorisation.
-La configuration industrielle peut injecter un `HttpClient` et une URI de base
-pour son proxy/TLS et ses tests. La clé ne doit jamais être passée en argument CLI.
+Le client utilise **LangChain4j 1.20.0** : `OpenAiResponsesChatModel` pour la
+génération et `OpenAiEmbeddingModel` pour la vectorisation, sans `ChatService`.
+`generate()` retourne simplement `aiMessage().text()` ; `embed()` retourne le
+vecteur. Le schéma dynamique est transmis avec `JsonRawSchema` et le mode strict.
+Les instructions deviennent un message `system`, et le produit un message `user`.
+`store=false` et les paramètres de génération sont conservés.
+
+Il n’y a plus de décorateur HTTP, d’accès aux réponses HTTP brutes, de contrôle
+de clé API ni de traduction personnalisée des exceptions. Les modèles gèrent
+le transport. Le constructeur injectable reçoit un `ChatModel`, un
+`EmbeddingModel` et les dimensions configurées ; il sert aussi aux tests.
+`Config` contient le modèle, la limite de sortie, la température et l’effort de
+raisonnement. Les délais suivent les valeurs par défaut de LangChain4j ; un
+besoin de configuration réseau spécifique se règle sur les modèles injectés.
+Les reprises embeddings restent désactivées (`maxRetries(0)`).
+
+Le service désérialise le texte JSON avec Jackson. Il conserve les règles métier
+sur les codes proposés et leurs rangs, sans valider à nouveau chaque champ du
+schéma. Les exceptions du fournisseur remontent directement à l’appelant et
+peuvent déclencher le secours industriel. Une erreur de parsing devient
+`HSCodeAnalysisException`. Les refus et statuts techniques du fournisseur ne
+sont plus interprétés séparément ; seule l’abstention exprimée dans le JSON
+métier est conservée. Un texte de refus non JSON échoue donc au parsing.
 
 ## Vérifications et limites de parité
 
-La suite comprend **84 tests réussis** : 27 tests du socle et 57 tests RAG,
-dont **31 cas de référence issus du moteur de référence**. Les cas couvrent
-classement, explication nullable, demandes de précision avec/sans candidats,
-abstention, refus, réponses incomplètes, codes rejetés, doublons, rangs non
-renumérotés et entrées invalides. Les tests de chargement utilisent également un JAR isolé pour vérifier la factory,
-les ressources absentes/corrompues et la fermeture des flux.
-Les autres tests couvrent les fichiers corrompus,
-les empreintes, les dimensions, les erreurs fournisseurs, les deux scores,
-la délégation d’analyse, les appels concurrents et le protocole HTTP réel contre
-un serveur local. Les tests RAG sont inclus dans l’export et ne dépendent pas du
-runner ni du moteur de référence.
+La simplification a été vérifiée par **31 tests ciblés**, dont **15 cas métier
+issus du moteur de référence** : ordre, explications nullables, questions,
+abstention, codes rejetés, doublons et rangs conservés. Les tests du client
+utilisent des modèles LangChain4j simulés, sans serveur HTTP ni appel OpenAI.
+Ils vérifient les messages, le schéma, les sorties et la propagation des erreurs.
+Les tests du service et du chargement depuis un JAR ont également été exécutés.
+
+Les anciens cas portant sur les enveloppes fournisseur et les validations
+supplémentaires ont été retirés. La parité porte sur le parcours métier et la
+recherche vectorielle ; elle ne porte plus sur les diagnostics fournisseur ou
+sur le traitement détaillé de réponses qui ne respectent pas le schéma.
 
 Recréer les références depuis le moteur de référence (opération de développement explicite) :
 
@@ -209,7 +224,7 @@ Il ne prétend pas prouver la parité pour toutes les requêtes possibles.
 
 Les tests n’évaluent pas la pertinence métier d’un modèle réel : ils vérifient le
 portage et les règles de traitement. Aucun appel OpenAI réel ni test dans le dépôt
-industriel n’a été effectué. Les délais, erreurs et formats HTTP sont exercés localement.
+industriel n’a été effectué. Les appels fournisseur sont simulés dans les tests.
 
 ## Test manuel OpenAI
 

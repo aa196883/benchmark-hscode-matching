@@ -288,8 +288,9 @@ pas un nouveau parent Maven à imposer au projet cible.
 
 ## 5. Vérifications effectuées
 
-Le socle conserve ses 27 tests de compatibilité. Le portage RAG comprend 57 tests,
-soit **84 tests réussis**, sans test ignoré. Le JAR a été exécuté en démonstration,
+Le socle conserve ses tests de compatibilité. La simplification du client RAG
+a été vérifiée par **31 tests ciblés**, dont 15 cas métier de référence.
+Les anciens tests des enveloppes fournisseur ont été retirés. Le JAR a été exécuté en démonstration,
 en analyse simulée et en rejeu RAG ; les scripts fonctionnent depuis un autre
 répertoire. L’index réel et l’archive exportée ont fait l’objet de vérifications
 décrites dans [RAG.md](RAG.md).

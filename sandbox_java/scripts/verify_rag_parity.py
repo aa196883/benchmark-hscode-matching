@@ -46,7 +46,7 @@ def main():
             provider = Mock(); provider.name = 'openai'; provider.generate.return_value = raw
             py = RAG(provider, ModelConfig(), retriever, 20).predict('offline parity query', 5, PredictionContext(catalog))
             (folder/'query.json').write_text(json.dumps(vector))
-            (folder/'response.json').write_text(json.dumps(raw))
+            (folder/'response.json').write_text(json.dumps(answer))
             command = ['java','-jar',str(args.jar.resolve()),'rag-replay',str(args.catalog.resolve()),str(args.index.resolve()),
                        str(folder/'query.json'),str(folder/'response.json'),'offline parity query','5','20']
             if args.classpath:

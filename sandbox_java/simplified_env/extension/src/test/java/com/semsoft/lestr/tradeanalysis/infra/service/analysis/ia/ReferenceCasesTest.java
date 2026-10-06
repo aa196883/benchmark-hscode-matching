@@ -26,7 +26,7 @@ class ReferenceCasesTest {
         var embedCalls = new AtomicInteger(); var generateCalls = new AtomicInteger();
         RagEmbeddingClient embed = query -> {
             embedCalls.incrementAndGet();
-            return new RagEmbeddingClient.Response(new double[]{1, 0}, PrecomputedEmbeddingIndex.MODEL, MAPPER.createObjectNode().put("total_tokens", 2));
+            return new double[]{1, 0};
         };
         JsonNode expected = c.get("expected");
         RagGenerationClient generate = (instructions, input, schema) -> {
@@ -37,7 +37,7 @@ class ReferenceCasesTest {
             assertEquals(prompt.get("schema"), schema);
             assertFalse(input.contains("cosine"));
             assertFalse(parse(input).path("candidates").get(0).has("score"));
-            return c.get("response").deepCopy();
+            return c.get("response").asText();
         };
         var service = new RagHSCodeAnalysisService(index, embed, generate, RagTestSupport.DELEGATE, c.get("retrieval_k").asInt());
         var result = service.searchDetailed(c.get("query").asText(), c.get("top_k").asInt());
@@ -55,7 +55,7 @@ class ReferenceCasesTest {
             assertEquals(py.get("references"), MAPPER.valueToTree(candidate.references()));
             assertEquals(2.5, candidate.score()); assertEquals("constant", candidate.scoreType());
         }
-        for (String key : List.of("rejected_candidates", "model_status", "error_stage", "refusals"))
+        for (String key : List.of("rejected_candidates", "model_status"))
             assertEquals(expected.path("metadata").get(key), result.metadata().get(key), key);
         if (expected.path("metadata").has("retrieved_candidates")) {
             var pythonHits = expected.path("metadata").get("retrieved_candidates");

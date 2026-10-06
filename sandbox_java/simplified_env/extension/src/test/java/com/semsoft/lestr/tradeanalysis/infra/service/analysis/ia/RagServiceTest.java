@@ -15,10 +15,10 @@ class RagServiceTest {
     @TempDir Path directory;
     PrecomputedEmbeddingIndex index;
     @BeforeEach void setup() throws Exception { RagTestSupport.fixtures(directory); index = RagTestSupport.index(directory); }
-    private RagEmbeddingClient embed() { return query -> new RagEmbeddingClient.Response(new double[]{1,0}, PrecomputedEmbeddingIndex.MODEL, MAPPER.createObjectNode()); }
+    private RagEmbeddingClient embed() { return query -> new double[]{1,0}; }
     private RagGenerationClient generate() {
         return (instructions, input, schema) -> {
-            try (var stream = getClass().getResourceAsStream("/rag-fixtures/response.json")) { return MAPPER.readTree(stream); }
+            try (var stream = getClass().getResourceAsStream("/rag-fixtures/response.json")) { return new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8); }
             catch (Exception e) { throw new AssertionError(e); }
         };
     }
@@ -30,38 +30,46 @@ class RagServiceTest {
         assertTrue(result.matchingHSCodes().stream().allMatch(hit -> hit.score().score() == 3));
         assertEquals(new AnalyseResult(Source.Verbatim, "horses 010121"), service.analyse("horses", HSCode.hsCode("010121")));
     }
-    @Test void providerFailurePreservesStageAndRetrievalAndTriggersIndustrialException() {
-        var count = new AtomicInteger();
-        RagGenerationClient failure = (instructions, input, schema) -> {
-            count.incrementAndGet(); throw new RagProviderException("http_error", "fixture failure", 429, "request-fixture");
-        };
-        var service = new RagHSCodeAnalysisService(index, embed(), failure, RagTestSupport.DELEGATE, 20);
-        var result = service.searchDetailed("horses");
-        assertEquals("error", result.status());
-        assertEquals("generation", result.metadata().get("error_stage").asText());
-        assertEquals(429, result.error().get("status_code").asInt());
-        assertEquals(3, result.metadata().get("retrieved_candidates").size());
-        assertTrue(result.metadata().has("generation_duration_seconds"));
-        assertThrows(HSCodeAnalysisException.class, () -> service.toSearchResult(result));
-        assertEquals(1, count.get());
+    @Test void providerFailurePropagatesToIndustrialCaller() {
+        var failure = new IllegalStateException("model unavailable");
+        RagGenerationClient generation = (instructions, input, schema) -> { throw failure; };
+        var service = new RagHSCodeAnalysisService(index, embed(), generation, RagTestSupport.DELEGATE, 20);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> service.searchFromDescription("horses")));
     }
-    @Test void retrievalFailureAndWrongResponseModelPreventGeneration() {
+    @Test void retrievalFailurePreventsGeneration() {
         var calls = new AtomicInteger();
+        var failure = new IllegalStateException("embedding unavailable");
         RagGenerationClient generation = (instructions, input, schema) -> { calls.incrementAndGet(); return null; };
-        RagEmbeddingClient failure = query -> { throw new RagProviderException("connection_error", "fixture", null, null); };
-        for (var client : List.of(failure, (RagEmbeddingClient) query -> new RagEmbeddingClient.Response(new double[]{1,0}, "wrong-model", null),
-                (RagEmbeddingClient) query -> new RagEmbeddingClient.Response(new double[]{1}, PrecomputedEmbeddingIndex.MODEL, null))) {
-            var service = new RagHSCodeAnalysisService(index, client, generation, RagTestSupport.DELEGATE, 20);
-            var result = service.searchDetailed("horses");
-            assertEquals("error", result.status());
-            assertEquals("retrieval", result.metadata().get("error_stage").asText());
-        }
+        RagEmbeddingClient embeddings = query -> { throw failure; };
+        var service = new RagHSCodeAnalysisService(index, embeddings, generation, RagTestSupport.DELEGATE, 20);
+        assertSame(failure, assertThrows(IllegalStateException.class, () -> service.searchDetailed("horses")));
         assertEquals(0, calls.get());
+    }
+    @Test void malformedAnswerFailsInsteadOfReturningCandidates() {
+        var service = new RagHSCodeAnalysisService(index, embed(), (i, u, s) -> "not JSON", RagTestSupport.DELEGATE, 20);
+        assertThrows(HSCodeAnalysisException.class, () -> service.searchFromDescription("horses"));
+    }
+    @Test void unknownJsonPropertiesAreIgnoredLikeIndustrialCompletion() {
+        RagGenerationClient generation = (i, u, s) -> """
+                {"status":"ok","missing_information":[],"extra":"ignored",
+                 "candidates":[{"code":"010121","explanation":null,"extra":true}]}
+                """;
+        var service = new RagHSCodeAnalysisService(index, embed(), generation, RagTestSupport.DELEGATE, 20);
+        var result = service.searchDetailed("horses");
+        assertEquals("010121", result.candidates().getFirst().code());
+        assertNull(result.candidates().getFirst().explanation());
+    }
+    @Test void invalidQueryAndRetrievalSizeFailBeforeCallingModels() {
+        RagEmbeddingClient embeddings = query -> { throw new AssertionError("Unexpected embedding call"); };
+        var service = new RagHSCodeAnalysisService(index, embeddings, generate(), RagTestSupport.DELEGATE, 2);
+        assertThrows(IllegalArgumentException.class, () -> service.searchDetailed("", 2));
+        assertThrows(IllegalArgumentException.class, () -> service.searchDetailed("horses", 0));
+        assertThrows(IllegalArgumentException.class, () -> service.searchDetailed("horses", 3));
     }
     @Test void constructorRejectsVectorizerConfigMismatch() {
         var client = new RagEmbeddingClient() {
             public Integer dimensions() { return 2; }
-            public Response embed(String query) { throw new AssertionError(); }
+            public double[] embed(String query) { throw new AssertionError(); }
         };
         assertThrows(IllegalArgumentException.class, () -> new RagHSCodeAnalysisService(index, client, generate(), RagTestSupport.DELEGATE,20));
     }

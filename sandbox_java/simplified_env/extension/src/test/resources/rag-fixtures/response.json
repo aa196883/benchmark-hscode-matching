@@ -1,18 +1,14 @@
 {
-  "status": "completed",
-  "model": "test-llm",
-  "usage": {
-    "total_tokens": 42
-  },
-  "output": [
+  "status": "ok",
+  "missing_information": [],
+  "candidates": [
     {
-      "type": "message",
-      "content": [
-        {
-          "type": "output_text",
-          "text": "{\"status\": \"ok\", \"missing_information\": [], \"candidates\": [{\"code\": \"010129\", \"explanation\": \"Supported by supplied description\"}, {\"code\": \"010121\", \"explanation\": \"Supported by supplied description\"}]}"
-        }
-      ]
+      "code": "010129",
+      "explanation": "Supported by supplied description"
+    },
+    {
+      "code": "010121",
+      "explanation": "Supported by supplied description"
     }
   ]
 }

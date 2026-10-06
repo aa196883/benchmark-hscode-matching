@@ -30,12 +30,12 @@ final class RagMain {
         if (replay) {
             int vectorPosition = external ? 3 : 1;
             double[] vector = JSON.readValue(Files.readString(Path.of(args[vectorPosition])), double[].class);
-            JsonNode response = JSON.readTree(Files.readString(Path.of(args[vectorPosition + 1])));
+            String response = Files.readString(Path.of(args[vectorPosition + 1]));
             embeddings = new RagEmbeddingClient() {
                 @Override public Integer dimensions() { return index.configuredDimensions(); }
-                @Override public Response embed(String description) { return new Response(vector.clone(), model(), JSON.createObjectNode()); }
+                @Override public double[] embed(String description) { return vector.clone(); }
             };
-            generation = (instructions, input, schema) -> response.deepCopy();
+            generation = (instructions, input, schema) -> response;
             analysisDelegate = new HSCodeAnalysisService() {
                 public SearchResult searchFromDescription(String description) {
                     throw new UnsupportedOperationException("Replay does not use an analysis delegate");
