@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -7,14 +7,18 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.DigestInputStream;
 import java.util.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** Immutable exact cosine index. Loads Python artefacts once; never computes catalogue embeddings. */
+/** Immutable exact cosine index. Loads precomputed resources once; never computes catalogue embeddings. */
 public final class PrecomputedEmbeddingIndex {
     public static final String MODEL = "text-embedding-3-small";
     public record Hit(String code, int rank, double score, String description,
                       @JsonProperty("contextual_description") String contextualDescription) {}
-    private final Path directory;
+    @FunctionalInterface
+    public interface ResourceOpener {
+        InputStream open(String name) throws IOException;
+    }
+    private final String location;
     private final RagCatalog catalog;
     private final JsonNode manifest;
     private final List<RagCatalog.Row> rows;
@@ -23,9 +27,16 @@ public final class PrecomputedEmbeddingIndex {
     private final Integer configuredDimensions;
 
     public PrecomputedEmbeddingIndex(Path directory, RagCatalog catalog) throws IOException {
-        this.directory = directory.toAbsolutePath().normalize();
+        this(directory.toAbsolutePath().normalize().toString(),
+                name -> Files.newInputStream(directory.resolve(name)), catalog);
+    }
+    /** Reads and closes each resource stream; location is an identifier for diagnostics only. */
+    public PrecomputedEmbeddingIndex(String location, ResourceOpener resources, RagCatalog catalog) throws IOException {
+        this.location = Objects.requireNonNull(location);
         this.catalog = Objects.requireNonNull(catalog);
-        manifest = parse(Files.readString(directory.resolve("manifest.json")));
+        try (var input = resources.open("manifest.json")) {
+            manifest = parse(new String(input.readAllBytes(), StandardCharsets.UTF_8));
+        }
         require(manifest != null && manifest.isObject(), "Invalid index manifest");
         require(manifest.path("schema_version").isIntegralNumber() && manifest.path("schema_version").intValue() == 1
                 && "2022".equals(manifest.path("edition").asText()) && "en".equals(manifest.path("language").asText())
@@ -44,7 +55,7 @@ public final class PrecomputedEmbeddingIndex {
         matrix = new float[rows.size()][];
         var digest = digest();
         int count = 0;
-        try (var input = new DigestInputStream(Files.newInputStream(directory.resolve("vectors.jsonl")), digest);
+        try (var input = new DigestInputStream(resources.open("vectors.jsonl"), digest);
              var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -76,7 +87,7 @@ public final class PrecomputedEmbeddingIndex {
         for (int i = 0; i < rows.size(); i++) {
             double sum = 0;
             for (int j = 0; j < dimensions; j++) sum += (double) matrix[i][j] * query[j];
-            // float32 result like NumPy, with double accumulation to avoid order-sensitive drift.
+            // Double accumulation followed by float32 rounding limits order-sensitive drift.
             scores[i] = Math.clamp((float) sum, -1f, 1f);
             order[i] = i;
         }
@@ -112,6 +123,6 @@ public final class PrecomputedEmbeddingIndex {
     public Integer configuredDimensions() { return configuredDimensions; }
     public RagCatalog catalog() { return catalog; }
     public JsonNode manifest() { return manifest.deepCopy(); }
-    public Path directory() { return directory; }
+    public String location() { return location; }
     public int size() { return rows.size(); }
 }

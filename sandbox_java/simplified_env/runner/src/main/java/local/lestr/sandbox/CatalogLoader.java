@@ -7,7 +7,7 @@ import com.semsoft.lestr.tradeanalysis.domain.model.*;
 import java.io.*;
 import java.util.*;
 
-/** Reads consecutive JSON objects, including pretty-printed POC JSONL. Caller owns the stream. */
+/** Reads consecutive JSON objects, including pretty-printed JSONL. Caller owns the stream. */
 public final class CatalogLoader {
     private CatalogLoader() {}
     public static InMemoryHSCodeService load(InputStream input, HSVersion version) throws IOException {

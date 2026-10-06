@@ -1,4 +1,4 @@
-"""Regenerate portable Java golden cases using the actual Python RAG. No network calls."""
+"""Regenerate portable Java golden cases using the reference RAG. No network calls."""
 from pathlib import Path
 import json
 import sys
@@ -95,7 +95,7 @@ def main():
     (OUT/'cases.json').write_text(json.dumps(cases, indent=2, ensure_ascii=False)+'\n')
     (OUT/'query.json').write_text('[1.0,0.0]\n')
     (OUT/'response.json').write_text(json.dumps(envelope(['010129', '010121']),indent=2)+'\n')
-    print(f'{len(cases)} Python golden cases written to {OUT}')
+    print(f'{len(cases)} reference cases written to {OUT}')
 
 if __name__ == '__main__':
     main()

@@ -2,7 +2,7 @@
 
 Ce dossier contient le socle Java local et le portage RAG implémentant
 `HSCodeAnalysisService`. La completion existante sert de référence de compatibilité.
-Le [guide RAG](RAG.md) décrit les commandes, l’index Python, les scores fixes
+Le [guide RAG](RAG.md) décrit les commandes, l’index précalculé, les scores fixes
 (2.5 détaillé / 3 industriel), les tests de parité et l’export.
 
 Les tests locaux établissent une compatibilité avec les extraits reçus. La procédure
@@ -123,7 +123,7 @@ sandbox_java/simplified_env/dev.sh run analyse \
   "Live breeding horses" 010121
 ```
 
-Le chargeur accepte aussi les objets JSON successifs du catalogue Python, y compris
+Le chargeur accepte aussi les objets JSON successifs du catalogue de référence, y compris
 le premier objet remis en forme sur plusieurs lignes :
 
 ```bash
@@ -209,20 +209,21 @@ Le RAG Java utilise désormais l’index POC, conserve les résultats enrichis e
 interne et les expose par `searchDetailed()`. Il adapte vers `SearchResult` avec un
 score constant 3 et `Source.OpenAI_Hybrid`, sans reclasser ; le résultat détaillé
 porte un score constant 2.5. `analyse()` délègue à la completion. Le chargement de
-l’index Python est indépendant d’`EmbeddingService`, dont les libellés simples et
+l’index précalculé est indépendant d’`EmbeddingService`, dont les libellés simples et
 le format de stockage ne correspondent pas à ceux du POC. Voir [RAG.md](RAG.md).
 
 ## 4. Développer puis transférer du nouveau code
 
 1. Ajouter les classes destinées à la production dans
-   `simplified_env/extension/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/rag/`.
+   `simplified_env/extension/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`.
    Utiliser les interfaces métier existantes et injecter les dépendances par
    constructeur. Les doubles et configurations locaux restent dans `runner`.
 2. Placer les ressources transférables dans `extension/src/main/resources` et les
    tests autonomes transférables dans `extension/src/test/java`. Les tests qui
    emploient le référentiel ou transport local restent dans `runner/src/test/java`.
    Ajouter les dépendances de test à `extension/pom.xml` si nécessaire.
-3. Câbler le nouveau service dans le lanceur local, puis exécuter `dev.sh verify`.
+3. Préparer les ressources avec `sandbox_java/scripts/prepare_rag_resources.sh`.
+   Câbler le nouveau service dans le lanceur local, puis exécuter `dev.sh verify`.
    Pour le RAG, comparer le classement sur des vecteurs et réponses LLM figés, pas
    sur deux appels réseau non déterministes. Ajouter les cas d’abstention,
    d’information manquante et de code hors candidats du POC.
@@ -230,7 +231,7 @@ le format de stockage ne correspondent pas à ceux du POC. Voir [RAG.md](RAG.md)
    implémentation, exécute `verify`, puis produit
    `extension/target/transferable-sources.tar.gz` avec `src/main`, `src/test`
    et le guide `INTEGRATION.md` du module, plus une empreinte SHA-256 adjacente. Il n’inclut ni POM local, ni `compat`, ni
-   `runner`, ni données, ni dépendances binaires. Examiner les ressources ajoutées
+   `runner`, ni dépendances binaires ; les données `h6_2022` sont incluses dans les ressources. Examiner les ressources ajoutées
    au module avant export. L’archive est un livrable de revue, pas un déploiement.
 5. Extraire l’archive dans un répertoire de revue distinct du dépôt industriel.
    Identifier le module qui contient actuellement `CompletionHSCodeChatServiceImpl`.
@@ -247,9 +248,9 @@ le format de stockage ne correspondent pas à ceux du POC. Voir [RAG.md](RAG.md)
 | Dépendances | Déclarer les bibliothèques réellement utilisées par le nouveau code dans le module cible, en suivant le BOM parent. Comparer LangChain4j, Jackson, Commons, JSpecify et les annotations/processeurs. |
 | Assemblage | Instancier le RAG dans la factory/configuration existante avec le vrai `HSCodeService`, le modèle et le service auquel déléguer `analyse()`. Le bean/fichier exact n’est pas connu ici. |
 | Configuration | Réutiliser le mécanisme Spring/secrets industriel. Les annotations de `OpenAIProperties` sont déjà présentes là-bas ; ne pas exporter sa version simplifiée. |
-| Données et chemins | Injecter les chemins du catalogue/index ; aucune référence à `sandbox_java`, `../data`, `/tmp` ou au répertoire de lancement dans le nouveau service. Résoudre les chemins à la frontière de configuration. |
+| Données et chemins | La factory charge `h6_2022` depuis le classpath du package `analysis.ia`. Ne plus lui passer de chemins de fichiers. |
 | Ressources embarquées | Utiliser un `InputStream` de classpath, sans conversion supposant un fichier disque. Tester après packaging, car une ressource peut être dans un JAR. |
-| Index externe | Préférer un chemin configuré vers des données en lecture seule. Vérifier disponibilité, droits, modèle, dimensions, édition, langue et empreintes avant les requêtes. Aucun recalcul implicite au démarrage. |
+| Index embarqué | Inclure `catalog.jsonl`, `manifest.json` et `vectors.jsonl` sous `src/main/resources/.../analysis/ia/h6_2022/`, sans filtrage. Vérifier leur présence dans le JAR final. Aucun recalcul implicite au démarrage. |
 | Cycle de vie | Charger l’index une fois selon le cycle de vie industriel, éviter les états mutables partagés par requête, vérifier les appels concurrents et les délais/reprises du fournisseur. |
 | Résultats et secours | Préserver le contrat `SearchResult` ; décider comment distinguer abstention métier et panne technique pour que la chaîne existante se comporte comme attendu. |
 | Logs | Utiliser le logging industriel ; le backend `slf4j-simple` du runner n’est pas transféré. Définir la politique de traces des descriptions/réponses avec le projet cible. |
@@ -287,8 +288,8 @@ pas un nouveau parent Maven à imposer au projet cible.
 
 ## 5. Vérifications effectuées
 
-Le socle conserve ses 27 tests de compatibilité. Le portage RAG ajoute 49 tests,
-soit **76 tests réussis**, sans test ignoré. Le JAR a été exécuté en démonstration,
+Le socle conserve ses 27 tests de compatibilité. Le portage RAG comprend 57 tests,
+soit **84 tests réussis**, sans test ignoré. Le JAR a été exécuté en démonstration,
 en analyse simulée et en rejeu RAG ; les scripts fonctionnent depuis un autre
 répertoire. L’index réel et l’archive exportée ont fait l’objet de vérifications
 décrites dans [RAG.md](RAG.md).

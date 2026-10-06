@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.*;
@@ -6,7 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.*;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
 class IndexValidationTest {
     @TempDir Path directory;

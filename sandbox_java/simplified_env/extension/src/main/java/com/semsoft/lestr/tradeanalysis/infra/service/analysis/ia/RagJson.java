@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.*;
 import java.io.IOException;

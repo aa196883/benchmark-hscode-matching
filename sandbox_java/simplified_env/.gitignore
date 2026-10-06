@@ -1,2 +1,5 @@
 **/target/
 .cache/
+
+# Large packaged resources are prepared explicitly from the existing data.
+/extension/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/h6_2022/

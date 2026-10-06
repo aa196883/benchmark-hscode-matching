@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
 class RagServiceTest {
     @TempDir Path directory;

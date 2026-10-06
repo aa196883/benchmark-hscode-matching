@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;

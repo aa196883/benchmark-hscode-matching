@@ -1,13 +1,13 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** Same Responses and embeddings payloads as the Python POC; no implicit retries. */
+/** Responses and embeddings HTTP client; no implicit retries. */
 public final class OpenAiRagClient implements RagGenerationClient, RagEmbeddingClient {
     public record Config(String model, int maxOutputTokens, Double temperature, String reasoningEffort, Duration timeout) {
         public Config {

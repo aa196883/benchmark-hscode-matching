@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.*;
@@ -8,15 +8,15 @@ import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
 import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** Port of rag_v1. Generation order is preserved; fixed display scores never influence ranking. */
+/** RAG service using rag_v1. Generation order is preserved; fixed display scores never influence ranking. */
 public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
     public static final String PROMPT_VERSION = "rag_v1";
     public static final int DEFAULT_RETRIEVAL_K = 20;
     public static final int INDUSTRIAL_SCORE = 3;
+    private static final String INDEX_RESOURCE_DIRECTORY = "h6_2022/";
     private static final String PROMPT = resource("rag_v1.txt");
     private static final JsonNode SCHEMA = parse(resource("rag_v1.schema.json"));
     private final PrecomputedEmbeddingIndex index;
@@ -34,13 +34,21 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         this.retrievalK = retrievalK;
         require(PrecomputedEmbeddingIndex.MODEL.equals(embeddings.model()) && Objects.equals(index.configuredDimensions(), embeddings.dimensions()), "Query vectorizer config must match the index");
     }
-    public static RagHSCodeAnalysisService construct(Path catalogPath, Path indexPath,
-                                                     OpenAIProperties properties, HSCodeAnalysisService analysisDelegate) throws IOException {
-        var index = new PrecomputedEmbeddingIndex(indexPath, new RagCatalog(catalogPath));
+    public static RagHSCodeAnalysisService construct(OpenAIProperties properties,
+                                                     HSCodeAnalysisService analysisDelegate) throws IOException {
+        var index = loadIndex();
         var defaults = OpenAiRagClient.Config.defaults();
         var config = new OpenAiRagClient.Config(properties.modelName(), defaults.maxOutputTokens(), null, null, defaults.timeout());
         var client = new OpenAiRagClient(properties.apiKey(), index.configuredDimensions(), config);
         return new RagHSCodeAnalysisService(index, client, client, analysisDelegate, DEFAULT_RETRIEVAL_K);
+    }
+    /** Loads the packaged catalogue and index; no file-system paths or temporary extraction are needed. */
+    public static PrecomputedEmbeddingIndex loadIndex() throws IOException {
+        var catalog = new RagCatalog(openResource(INDEX_RESOURCE_DIRECTORY + "catalog.jsonl"));
+        String location = "classpath:/" + RagHSCodeAnalysisService.class.getPackageName().replace('.', '/')
+                + "/" + INDEX_RESOURCE_DIRECTORY;
+        return new PrecomputedEmbeddingIndex(location,
+                name -> openResource(INDEX_RESOURCE_DIRECTORY + name), catalog);
     }
     @Override public SearchResult searchFromDescription(String description) {
         return toSearchResult(searchDetailed(description));
@@ -72,7 +80,7 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         try {
             require(description != null && !description.isBlank() && topK > 0, "Non-empty description and positive topK required");
             require(retrievalK >= topK, "retrievalK must be >= topK");
-            meta.put("index_path", index.directory().toString()).set("index_manifest", index.manifest());
+            meta.put("index_path", index.location()).set("index_manifest", index.manifest());
             meta.put("error_stage", "retrieval");
             long retrievalStart = System.nanoTime();
             var embedding = embeddings.embed(description);
@@ -183,9 +191,14 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         return names.equals(expected);
     }
     private static JsonNode error(String kind, String message) { return MAPPER.createObjectNode().put("kind", kind).put("message", message); }
+    private static InputStream openResource(String name) throws IOException {
+        var stream = RagHSCodeAnalysisService.class.getResourceAsStream(name);
+        if (stream == null) throw new FileNotFoundException("Missing RAG classpath resource: /"
+                + RagHSCodeAnalysisService.class.getPackageName().replace('.', '/') + "/" + name);
+        return stream;
+    }
     private static String resource(String name) {
-        try (var stream = RagHSCodeAnalysisService.class.getResourceAsStream(name)) {
-            if (stream == null) throw new IllegalStateException("Missing RAG resource: " + name);
+        try (var stream = openResource(name)) {
             return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) { throw new IllegalStateException("Cannot read RAG resource: " + name, e); }
     }

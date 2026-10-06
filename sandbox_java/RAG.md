@@ -1,20 +1,19 @@
-# RAG Java : utilisation, parité Python et intégration
+# RAG Java : ressources embarquées, utilisation et intégration
 
 `RagHSCodeAnalysisService` implémente `HSCodeAnalysisService` dans le module
 `simplified_env/extension`. Le code de compatibilité industriel n’a pas été modifié.
 Les types et ressources exportables résident sous le package
-`com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag`.
+`com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia`.
 
 ## Comportement et scores
 
-Le service reprend le parcours de `hs_matching/approaches/rag.py` :
+Le service exécute le parcours suivant :
 
 1. Charger une fois le catalogue HS 2022 anglais et son index précalculé.
 2. Vectoriser uniquement la description demandée avec `text-embedding-3-small`.
 3. Récupérer K voisins par cosinus (20 par défaut), avec K ≥ N.
 4. Fournir leurs codes, descriptions et descriptions contextualisées au LLM,
-   sans lui transmettre les scores cosinus. Le prompt `rag_v1` est copié à
-   l’identique depuis Python. Le schéma restreint les codes aux voisins récupérés.
+   sans lui transmettre les scores cosinus. Le prompt `rag_v1` est chargé depuis les ressources du package. Le schéma restreint les codes aux voisins récupérés.
 5. Valider la réponse et conserver l’ordre du LLM, les explications, les questions,
    l’abstention et les refus. Rejeter les codes invalides, inconnus, inadmissibles,
    hors récupération, dupliqués ou au-delà du rang N. Ne pas compléter la liste
@@ -30,8 +29,8 @@ Les trois scores ont des rôles distincts :
 
 Aucun de ces scores fixes ne provoque un tri. Le LLM ne reçoit pas de nouvelle
 consigne de scoring et ne produit pas de pourcentage. L’explication par candidat
-est le commentaire du POC ; aucun champ « commentaires » supplémentaire n’est
-inventé. `null` est accepté pour une explication comme en Python.
+est le commentaire du service ; aucun champ « commentaires » supplémentaire n’est
+inventé. `null` est accepté pour une explication comme dans les cas de référence.
 
 `searchDetailed(description)` retourne au plus cinq candidats.
 `searchDetailed(description, topK)` permet un N différent pour les expériences,
@@ -55,14 +54,42 @@ seconde analyse documentaire RAG.
 
 ## Données et chemins
 
-L’index existant est lu directement depuis `artifacts/embeddings/h6_2022` :
-**5 612 vecteurs, 1 536 dimensions**, modèle `text-embedding-3-small`. Il n’a pas été
-copié ni recalculé. Il faut également fournir le catalogue contenant les libellés :
-`data/processed/h6_2022/catalog.jsonl` ou `candidates.jsonl`. Les fichiers de vecteurs
-ne contiennent pas les descriptions nécessaires au prompt.
+La factory ne reçoit plus de chemins :
+
+```java
+RagHSCodeAnalysisService rag = RagHSCodeAnalysisService.construct(
+        openAIProperties, analysisDelegate);
+```
+
+Le service charge les ressources relatives à son package :
+
+```text
+src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/
+  rag_v1.txt
+  rag_v1.schema.json
+  h6_2022/
+    catalog.jsonl
+    manifest.json
+    vectors.jsonl
+```
+
+Le catalogue et l’index sont lus par flux (`getResourceAsStream`), y compris quand
+ils sont dans un JAR. Le dossier s’appelle `resources`, pas `ressources`.
+L’index conserve **5 612 vecteurs, 1 536 dimensions**, modèle
+`text-embedding-3-small`. Ses fichiers sont copiés à l’identique, sans recalcul.
+Dans ce dépôt, les préparer avant packaging/export avec :
+
+```bash
+sandbox_java/scripts/prepare_rag_resources.sh
+```
+
+Ce script copie le catalogue de `data/processed/h6_2022/catalog.jsonl` et les deux
+fichiers d’`artifacts/embeddings/h6_2022`. Les copies volumineuses sont ignorées par
+Git mais incluses dans le JAR et dans l’archive exportée. Refaire la préparation
+après un changement de données, puis reconstruire le JAR.
 
 `RagCatalog` accepte les objets JSON successifs, y compris leur remise en forme
-multiligne. Il applique l’éligibilité du POC : code à six chiffres, niveau 6,
+multiligne. Il applique l’éligibilité du service : code à six chiffres, niveau 6,
 `is_candidate=true`, exclusion des codes spéciaux. Les zéros initiaux sont préservés.
 
 `PrecomputedEmbeddingIndex` contrôle le manifeste, l’édition, la langue, le champ
@@ -71,24 +98,28 @@ l’empreinte des descriptions et celle des octets des vecteurs. Les vecteurs do
 être numériques, finis, non nuls et représentables en float32. Les descriptions
 font foi pour la compatibilité : le catalogue complet et le fichier des seuls
 candidats peuvent avoir des empreintes brutes différentes mais la même empreinte
-de descriptions admissibles, comme en Python.
+de descriptions admissibles, comme dans les cas de référence.
 
 L’index est immuable après chargement et réutilisable par plusieurs requêtes. La
 matrice float32 occupe environ 33 Mio, hors catalogue, objets et buffers temporaires.
 Les vecteurs sont lus ligne par ligne. Aucun fichier d’index n’est modifié pendant
 l’inférence et aucun index absent n’est reconstruit implicitement.
 
-Tous les chemins sont injectés. Les chemins de la CLI sont relatifs au répertoire
-courant ; les ressources de prompt/schéma sont chargées par `InputStream` depuis
-le classpath, donc également depuis le JAR. L’index externe reste hors de l’archive
-Java à transférer. En production, configurer explicitement son emplacement et celui
-du catalogue, et les rendre disponibles sur le système cible.
+L’index est chargé une fois par construction de service, avec fermeture des flux,
+sans extraction temporaire. Il n’est pas mis en cache dans un champ statique.
+Un fichier manquant produit une `FileNotFoundException` indiquant son chemin de
+classpath ; un contenu incompatible est rejeté par les mêmes validations.
+`loadIndex()` expose ce chargement sans créer de client réseau. La métadonnée
+`index_path` vaut désormais `classpath:/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/h6_2022/`.
+Les constructeurs de bas niveau prenant des chemins restent disponibles pour les
+outils de rejeu et les tests ; ils ne font plus partie de la factory du service.
 
 ## Lancer
 
 Depuis la racine du dépôt, avec JDK 21 et Maven disponibles :
 
 ```bash
+sandbox_java/scripts/prepare_rag_resources.sh
 sandbox_java/simplified_env/dev.sh verify
 ```
 
@@ -113,14 +144,12 @@ Appel réel, après configuration de `OPENAI_API_KEY` dans l’environnement :
 
 ```bash
 sandbox_java/simplified_env/dev.sh run rag \
-  data/processed/h6_2022/catalog.jsonl \
-  artifacts/embeddings/h6_2022 \
   "Live pure-bred breeding horses" 5 20
 ```
 
 Cette commande consomme une vectorisation de requête et une génération. Par défaut,
 le LLM est `gpt-4.1-mini`, la limite de sortie 2048 tokens et le délai de chaque appel
-60 secondes, comme dans le POC. Température et effort de raisonnement ne sont pas
+60 secondes, comme dans la configuration initiale. Température et effort de raisonnement ne sont pas
 envoyés par défaut. `OpenAiRagClient.Config` permet de les régler par injection Java.
 Les dimensions de requête sont issues de `manifest.config.dimensions` ; une valeur
 nulle signifie ne pas envoyer le paramètre et utiliser la dimension native du modèle.
@@ -137,27 +166,29 @@ pour son proxy/TLS et ses tests. La clé ne doit jamais être passée en argumen
 
 ## Vérifications et limites de parité
 
-La suite comprend **76 tests réussis** : 27 tests du socle et 49 tests RAG,
-dont **31 cas de référence générés par le Python existant**. Les cas couvrent
+La suite comprend **84 tests réussis** : 27 tests du socle et 57 tests RAG,
+dont **31 cas de référence issus du moteur de référence**. Les cas couvrent
 classement, explication nullable, demandes de précision avec/sans candidats,
 abstention, refus, réponses incomplètes, codes rejetés, doublons, rangs non
-renumérotés et entrées invalides. Les autres tests couvrent les fichiers corrompus,
+renumérotés et entrées invalides. Les tests de chargement utilisent également un JAR isolé pour vérifier la factory,
+les ressources absentes/corrompues et la fermeture des flux.
+Les autres tests couvrent les fichiers corrompus,
 les empreintes, les dimensions, les erreurs fournisseurs, les deux scores,
 la délégation d’analyse, les appels concurrents et le protocole HTTP réel contre
 un serveur local. Les tests RAG sont inclus dans l’export et ne dépendent pas du
-runner ni d’une installation Python.
+runner ni du moteur de référence.
 
-Recréer les références depuis Python (opération de développement explicite) :
+Recréer les références depuis le moteur de référence (opération de développement explicite) :
 
 ```bash
 .venv/bin/python sandbox_java/scripts/generate_rag_fixtures.py
 sandbox_java/simplified_env/dev.sh verify
 ```
 
-Comparer le JAR au Python sur l’index réel, sans appeler d’API :
+Comparer le JAR au moteur de référence sur l’index réel, sans appeler d’API :
 
 ```bash
-.venv/bin/python sandbox_java/scripts/verify_rag_parity.py
+.venv/bin/python sandbox_java/scripts/verify_rag_parity.py --classpath
 ```
 
 Ce script recharge l’index complet et compare quatre vecteurs de requête figés
@@ -172,13 +203,32 @@ La normalisation et le calcul de cosinus Java utilisent une matrice float32,
 avec accumulation du produit scalaire en double puis arrondi float32. NumPy/BLAS
 peut accumuler différemment. Les scores ne sont donc pas garantis identiques bit
 à bit ; des valeurs extrêmement proches peuvent modifier un ordre de voisins.
-Les égalités exactes sont départagées par code comme dans le POC. Le test utilise
+Les égalités exactes sont départagées par code comme dans la configuration initiale. Le test utilise
 une tolérance de `2e-6` sur les scores et exige le même ordre sur les cas vérifiés.
 Il ne prétend pas prouver la parité pour toutes les requêtes possibles.
 
 Les tests n’évaluent pas la pertinence métier d’un modèle réel : ils vérifient le
 portage et les règles de traitement. Aucun appel OpenAI réel ni test dans le dépôt
 industriel n’a été effectué. Les délais, erreurs et formats HTTP sont exercés localement.
+
+## Test manuel OpenAI
+
+`RagHSCodeServiceMT` utilise la factory sans chemins. Il lit la clé dans
+`OPENAI_API_KEY` et ne s’exécute que sur demande explicite :
+
+```bash
+RUN_OPENAI_MT=true sandbox_java/simplified_env/dev.sh test \
+  -Dtest=RagHSCodeServiceMT -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+La clé doit déjà être définie dans l’environnement. Les recherches banana/toluene/
+T-shirt appellent réellement OpenAI ; elles sont séparées des tests de build et
+peuvent varier selon les réponses du modèle. Elles n’ont pas été lancées ici.
+
+Pour vérifier le JAR et son index embarqué sans réseau, `rag-replay-classpath`
+accepte `VECTOR_JSON RESPONSE_JSON DESCRIPTION [TOP_K [RETRIEVAL_K]]`.
+Le vecteur fourni doit avoir les 1 536 dimensions de l’index réel ; les fixtures
+synthétiques à deux dimensions servent uniquement à `rag-replay` et aux tests.
 
 ## Export et intégration
 
@@ -189,7 +239,8 @@ sandbox_java/simplified_env/export.sh -o
 L’archive `simplified_env/extension/target/transferable-sources.tar.gz` contient
 uniquement les nouvelles sources, leurs ressources, les tests RAG/fixtures et
 `INTEGRATION.md`. Elle n’embarque ni contrats de compatibilité, ni runner,
-ni dépendances binaires, ni gros catalogue/index, ni clé. Son empreinte est fournie
+ni dépendances binaires, ni clé. Le catalogue et l’index sont maintenant inclus dans
+`src/main/resources/.../ia/h6_2022/` : l’archive est donc plus volumineuse. Son empreinte est fournie
 dans le fichier adjacent `.sha256`.
 
 Le guide court de transfert est [INTEGRATION.md](simplified_env/extension/INTEGRATION.md).

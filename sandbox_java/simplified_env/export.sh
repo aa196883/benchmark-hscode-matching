@@ -5,6 +5,13 @@ if [[ -z "$(find "$sandbox_root/extension/src/main/java" -name '*.java' ! -name 
   echo 'Aucune implémentation transférable : ajouter le nouveau service dans extension/src/main/java avant export.' >&2
   exit 2
 fi
+resource_root="$sandbox_root/extension/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/h6_2022"
+for name in catalog.jsonl manifest.json vectors.jsonl; do
+  if [[ ! -s "$resource_root/$name" ]]; then
+    echo "Ressource manquante : $resource_root/$name. Lancer sandbox_java/scripts/prepare_rag_resources.sh avant export." >&2
+    exit 2
+  fi
+done
 "$sandbox_root/dev.sh" verify "$@"
 mkdir -p "$sandbox_root/extension/target"
 source_paths=(src/main INTEGRATION.md)

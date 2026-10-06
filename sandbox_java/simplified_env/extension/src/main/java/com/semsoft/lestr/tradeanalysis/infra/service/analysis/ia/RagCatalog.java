@@ -1,20 +1,25 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** HS 2022 / EN catalogue, including the eligibility rules of the Python POC. */
+/** HS 2022 / EN catalogue with candidate eligibility checks. */
 public final class RagCatalog {
     public record Row(String code, String description, String contextualDescription, boolean eligible) {}
     private final SortedMap<String, Row> rows;
     private final String sha256;
 
     public RagCatalog(Path path) throws IOException {
-        byte[] raw = Files.readAllBytes(path);
+        this(Files.newInputStream(path));
+    }
+    /** Takes ownership of the stream and closes it, including when validation fails. */
+    public RagCatalog(InputStream input) throws IOException {
+        byte[] raw;
+        try (input) { raw = input.readAllBytes(); }
         sha256 = sha(raw);
         var loaded = new TreeMap<String, Row>();
         try (var parser = MAPPER.getFactory().createParser(raw)) {

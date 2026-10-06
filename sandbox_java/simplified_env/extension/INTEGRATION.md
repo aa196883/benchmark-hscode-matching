@@ -1,59 +1,82 @@
-# Intégration des sources RAG exportées
+# Mise à jour du service RAG intégré
 
-Ces sources implémentent `HSCodeAnalysisService` sans modifier les contrats existants.
-La procédure est une hypothèse d’intégration à valider dans le dépôt industriel.
+Les sources utilisent désormais directement le package industriel
+`com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia`.
+Les contrats métier, le classement et les scores restent inchangés.
 
-1. Extraire l’archive dans un dossier de revue. Copier `src/main/java` et
-   `src/main/resources` dans le module qui possède les implémentations d’analyse.
-   Conserver les packages et les chemins relatifs. Copier les tests/resources de
-   `src/test` dans le module de test approprié.
-2. Résoudre les contrats `com.semsoft.lestr.shared.kernel.goods.HSCode`, les modèles
-   `com.semsoft.lestr.tradeanalysis.domain.model.*`, `HSCodeAnalysisService` et
-   `OpenAIProperties` via les dépendances **industrielles existantes**. Ne pas ajouter
-   `compat`, `runner` ou leur JAR. Aucun de ces types n’est redéfini par l’export.
-3. Compiler en Java 21 ; déclarer Jackson Databind via le BOM industriel 2.21.4.
-   Les tests nécessitent JUnit Jupiter 5.12.2 (ou sa version industrielle compatible).
-   Le RAG utilise le client HTTP du JDK ; LangChain4j 1.20.0 reste utilisé par le
-   service de completion auquel `analyse()` est délégué.
-4. Fournir le catalogue HS 2022 anglais et le répertoire contenant `manifest.json`
-   et `vectors.jsonl`, provenant du même index Python `text-embedding-3-small`.
-   Ces données externes ne sont pas dans l’archive. Les chemins sont injectés via
-   la configuration industrielle, jamais déduits du répertoire de lancement.
-5. Au démarrage, construire une seule instance et réutiliser son index :
+## Copier les fichiers
+
+Reporter les sources et tests de l’archive sous les mêmes chemins dans le module
+industriel. Mettre également à jour `src/main/resources` : cette archive contient
+les données complètes, en plus du prompt et du schéma.
+
+```text
+src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/
+  rag_v1.txt
+  rag_v1.schema.json
+  h6_2022/
+    catalog.jsonl
+    manifest.json
+    vectors.jsonl
+```
+
+Conserver ces fichiers sans filtrage Maven ni modification de leur contenu.
+Les empreintes sont vérifiées au chargement. Le nom du dossier Maven est
+`resources` (pas `ressources`). Aucune extraction du JAR vers un dossier temporaire
+n’est nécessaire : les ressources sont lues comme des flux du classpath.
+
+Ne pas ajouter les classes/JAR de compatibilité ou le runner local au projet
+industriel. Les sources ont besoin de Java 21, Jackson Databind et des contrats
+industriels existants. Les tests utilisent JUnit Jupiter ; la completion conserve
+ses dépendances habituelles.
+
+## Modifier l’instanciation
+
+Supprimer les deux arguments `Path` des appels à la factory :
 
 ```java
 HSCodeAnalysisService completion = CompletionHSCodeChatServiceImpl.construct(
     openAIProperties, hsCodeService, HSVersion.V_2022);
 RagHSCodeAnalysisService rag = RagHSCodeAnalysisService.construct(
-    catalogPath, indexDirectory, openAIProperties, completion);
+    openAIProperties, completion);
 ```
 
-Le constructeur complet permet d’injecter les clients `RagEmbeddingClient`,
-`RagGenerationClient`, le service d’analyse et K. Le factory utilise le nom de modèle
-fourni par `OpenAIProperties`, 2048 tokens et 60 secondes. Pour un autre réglage,
-construire `OpenAiRagClient` avec `Config`, puis injecter la même instance pour
-la vectorisation et la génération. Son autre constructeur accepte le client HTTP
-et l’URI de base configurés par l’application.
+La factory peut lever `IOException` si une ressource manque ou ne peut être lue ;
+un contenu incompatible lève `IllegalArgumentException`. Réutiliser l’instance
+ainsi créée : l’index est chargé une fois par construction, pas à chaque recherche.
+Il n’est pas chargé pendant l’initialisation statique de la classe, pour conserver
+des erreurs de chargement explicites et permettre les tests avec un index injecté.
 
-6. Brancher `rag` à l’endroit voulu de la factory/chaîne de secours. Les résultats
-   RAG ont `Source.OpenAI_Hybrid`. Les erreurs de recherche deviennent
-   `HSCodeAnalysisException` ; l’abstention est un résultat vide et ne déclenche
-   pas le secours de la chaîne existante. `analyse()` conserve la source du délégué.
-7. Si l’appelant doit afficher les explications/questions/statuts, appeler
-   `searchDetailed()` et conserver son `RagResult`. Utiliser `toSearchResult()`
-   pour obtenir en plus la projection industrielle sans second appel réseau.
-   Le score détaillé est 2.5 constant ; le score industriel 3 constant.
-   L’ordre du LLM et les rangs originaux sont conservés ; ne pas reclasser par score.
+Le constructeur prenant un index et des clients reste disponible pour les tests
+et l’injection de configuration. `loadIndex()` charge le même index embarqué sans
+créer de client réseau. Les constructeurs de bas niveau acceptant des chemins
+restent utilisables par les outils de rejeu ; la factory du service ne prend plus
+de chemins. La métadonnée `index_path` devient un identifiant `classpath:/.../h6_2022/`.
 
-À vérifier dans le projet cible : compilation/BOM, découverte et câblage Spring,
-présence des ressources dans le JAR, accès au catalogue/index montés, cohérence avec
-le vrai référentiel métier, interprétation de `Source.OpenAI_Hybrid`, affichage des
-scores constants, abstention/erreur/secours, traitement des demandes de précision,
-proxy/TLS/secrets, délais fournisseurs et charge concurrente. Les traces détaillées
-incluent la description, les candidats et la réponse ; appliquer la politique de
-journalisation de l’application avant de les persister.
+Le service utilise `Source.OpenAI_Hybrid`. Une erreur de recherche devient
+`HSCodeAnalysisException` ; une abstention retourne une liste vide. `analyse()`
+reste déléguée. `searchDetailed()` conserve explications et questions avec le score
+constant 2.5 ; `toSearchResult()` projette vers le score industriel 3 sans autre
+appel réseau ni reclassement.
 
-Les tests exportés utilisent des données synthétiques de petite dimension et des
-réponses figées (31 cas issus du Python), ainsi qu’un serveur HTTP local. Ils
-n’appellent pas OpenAI. Aucun résultat de test local ne prouve l’intégration dans
-le dépôt industriel auquel nous n’avons pas accès.
+## Test manuel et vérifications
+
+`RagHSCodeServiceMT` utilise `System.getenv("OPENAI_API_KEY")` à la place de
+`Utils.getSecret`. Il est activé uniquement si `RUN_OPENAI_MT=true` et sélectionné
+explicitement par Maven, par exemple depuis la racine de ce dépôt :
+
+```bash
+RUN_OPENAI_MT=true sandbox_java/simplified_env/dev.sh test \
+  -Dtest=RagHSCodeServiceMT -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Définir préalablement `OPENAI_API_KEY` dans l’environnement. Ce test effectue de
+vrais appels, avec les coûts et la variabilité associés ; il n’est pas exécuté
+par les vérifications ordinaires. Dans le dépôt industriel, utiliser le wrapper
+et la sélection de module habituels avec les mêmes options de test.
+
+Vérifier dans le module cible la présence des cinq ressources dans le JAR final,
+le démarrage depuis un autre répertoire, la configuration OpenAI et les appels
+métier. Les tests exportés couvrent le chargement depuis un JAR isolé, les fichiers
+absents/corrompus, la fermeture des flux, les cas de référence et le protocole HTTP
+local. Aucun test OpenAI réel n’a été lancé lors de cette mise à jour.

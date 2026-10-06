@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
@@ -10,7 +10,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
 class OpenAiRagClientTest {
     HttpServer server;
@@ -37,7 +37,7 @@ class OpenAiRagClientTest {
     private OpenAiRagClient client(Integer dimensions, OpenAiRagClient.Config config) {
         return new OpenAiRagClient("secret-fixture", dimensions, config, HttpClient.newHttpClient(), URI.create("http://127.0.0.1:"+server.getAddress().getPort()+"/v1/"));
     }
-    @Test void responsePayloadMatchesPythonAndPreservesEnvelope() {
+    @Test void responsePayloadPreservesEnvelope() {
         response = """
                 {"status":"completed","model":"test","output":[{"type":"message","content":[{"type":"refusal","refusal":"No"}]}]}
                 """;

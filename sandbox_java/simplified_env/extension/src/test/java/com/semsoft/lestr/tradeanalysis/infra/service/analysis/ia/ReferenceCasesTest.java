@@ -1,4 +1,4 @@
-package com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag;
+package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.semsoft.lestr.tradeanalysis.domain.model.HSCodeAnalysisException;
@@ -9,11 +9,11 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.rag.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-class PythonParityTest {
+class ReferenceCasesTest {
     @TempDir Path directory;
-    @TestFactory Stream<DynamicTest> goldenCasesFromActualPythonImplementation() throws Exception {
+    @TestFactory Stream<DynamicTest> goldenReferenceCases() throws Exception {
         RagTestSupport.fixtures(directory);
         var index = RagTestSupport.index(directory);
         JsonNode cases;
