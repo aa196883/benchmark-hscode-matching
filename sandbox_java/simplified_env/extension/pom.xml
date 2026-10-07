@@ -9,6 +9,11 @@
   <artifactId>extension</artifactId>
   <dependencies>
     <dependency>
+      <groupId>dev.langchain4j</groupId>
+      <artifactId>langchain4j</artifactId>
+      <version>${langchain4j.version}</version>
+    </dependency>
+    <dependency>
       <groupId>local.lestr.sandbox</groupId>
       <artifactId>compat</artifactId>
       <version>${project.version}</version>

@@ -23,6 +23,12 @@ class IndexValidationTest {
         assertThrows(IllegalArgumentException.class, () -> index.search(new double[]{Double.NaN,0}, 2));
         assertThrows(IllegalArgumentException.class, () -> index.search(new double[]{1,0}, 0));
     }
+    @Test void includesNegativeCosineMatchesAndIgnoresQueryMagnitude() throws Exception {
+        var index = RagTestSupport.index(directory);
+        var expected = List.of("010130", "010129", "010121");
+        assertEquals(expected, index.search(new double[]{-1,0}, 3).stream().map(RagCatalog.Row::code).toList());
+        assertEquals(expected, index.search(new double[]{-100,0}, 3).stream().map(RagCatalog.Row::code).toList());
+    }
     @Test void rejectsCatalogueChangesButAcceptsFormattingChanges() throws Exception {
         var path = directory.resolve("catalog.jsonl");
         Files.writeString(path, "  "+Files.readString(path)+"  ");
@@ -68,6 +74,7 @@ class IndexValidationTest {
         var row = (ObjectNode) parse(lines.get(1)); row.set("vector", parse("[1,0]")); lines.set(1, encode(row));
         Files.write(path, lines); updateChecksum();
         var index = RagTestSupport.index(directory);
+        assertEquals("010121", index.search(new double[]{1,0},1).getFirst().code());
         assertEquals(List.of("010121", "010129"), index.search(new double[]{1,0},2).stream().map(RagCatalog.Row::code).toList());
     }
     @Test void rejectsEmptyCatalogueDuplicateCodesWrongLanguageAndMissingContext() throws Exception {

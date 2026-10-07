@@ -1,6 +1,10 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import dev.langchain4j.data.embedding.Embedding;
+import dev.langchain4j.store.embedding.EmbeddingMatch;
+import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
+import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -17,7 +21,7 @@ public final class PrecomputedEmbeddingIndex {
     }
     private final RagCatalog catalog;
     private final List<RagCatalog.Row> rows;
-    private final float[][] matrix;
+    private final InMemoryEmbeddingStore<RagCatalog.Row> store = new InMemoryEmbeddingStore<>();
     private final int dimensions;
     private final Integer configuredDimensions;
 
@@ -46,7 +50,6 @@ public final class PrecomputedEmbeddingIndex {
         rows = catalog.candidates();
         require(catalog.descriptionsSha256().equals(manifest.path("source").path("descriptions_sha256").asText()), "Catalogue descriptions differ from the index");
         require(manifest.path("count").isInt() && manifest.path("count").intValue() == rows.size(), "Inconsistent index count");
-        matrix = new float[rows.size()][];
         var digest = digest();
         int count = 0;
         try (var input = new DigestInputStream(resources.open("vectors.jsonl"), digest);
@@ -66,7 +69,8 @@ public final class PrecomputedEmbeddingIndex {
                 double norm = Math.sqrt(normSquared);
                 require(Double.isFinite(norm) && norm > 0, "Zero float32 vector norm");
                 for (int j = 0; j < dimensions; j++) stored[j] = (float) (stored[j] / norm);
-                matrix[count++] = stored;
+                var candidate = rows.get(count++);
+                store.add(candidate.code(), Embedding.from(stored), candidate);
             }
         }
         require(count == rows.size() && HexFormat.of().formatHex(digest.digest()).equals(manifest.path("vectors_sha256").asText()), "Incomplete index or invalid vectors checksum");
@@ -76,22 +80,19 @@ public final class PrecomputedEmbeddingIndex {
         double norm = validate(vector, dimensions);
         float[] query = new float[dimensions];
         for (int j = 0; j < dimensions; j++) query[j] = (float) (vector[j] / norm);
-        double[] scores = new double[rows.size()];
-        Integer[] order = new Integer[rows.size()];
-        for (int i = 0; i < rows.size(); i++) {
-            double sum = 0;
-            for (int j = 0; j < dimensions; j++) sum += (double) matrix[i][j] * query[j];
-            // Double accumulation followed by float32 rounding limits order-sensitive drift.
-            scores[i] = Math.clamp((float) sum, -1f, 1f);
-            order[i] = i;
-        }
-        Arrays.sort(order, Comparator.<Integer>comparingDouble(i -> scores[i]).reversed().thenComparing(i -> rows.get(i).code()));
-        var result = new ArrayList<RagCatalog.Row>();
-        for (int rank = 0; rank < Math.min(topK, order.length); rank++) {
-            result.add(rows.get(order[rank]));
-        }
-        return List.copyOf(result);
+        // Retrieve all matches so ties at the topK boundary are resolved by HS code.
+        return store.search(EmbeddingSearchRequest.builder()
+                        .queryEmbedding(Embedding.from(query))
+                        .maxResults(rows.size())
+                        .minScore(0.0)
+                        .build()).matches().stream()
+                .sorted(Comparator.<EmbeddingMatch<RagCatalog.Row>>comparingDouble(EmbeddingMatch::score)
+                        .reversed().thenComparing(match -> match.embedded().code()))
+                .limit(topK)
+                .map(EmbeddingMatch::embedded)
+                .toList();
     }
+
     static double[] vector(JsonNode array, int dimensions) {
         require(array.isArray() && array.size() == dimensions, "Invalid vector dimensions");
         double[] vector = new double[dimensions];

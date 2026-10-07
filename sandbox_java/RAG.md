@@ -214,9 +214,11 @@ vérifiés directement à l’appel du client simulé dans les tests Java.
 Le rapport est écrit dans `simplified_env/extension/target/full-index-parity.json`.
 Ce script n’a pas été relancé lors de la suppression des métadonnées.
 
-Le calcul de cosinus interne conserve la matrice float32 et l’accumulation en
-double. Les égalités sont départagées par code ; des différences d’arrondi avec
-le moteur de référence restent possibles pour des scores très proches.
+Les vecteurs précalculés sont normalisés en float32 puis chargés dans un
+`InMemoryEmbeddingStore` LangChain4j, qui calcule les similarités cosinus.
+Les égalités sont départagées par code avant la sélection des K voisins ; des
+différences d’arrondi avec le moteur de référence restent possibles pour des
+scores très proches. Aucun embedding du catalogue n’est recalculé.
 
 Les tests n’évaluent pas la pertinence métier d’un modèle réel : ils vérifient le
 portage et les règles de traitement. Aucun appel OpenAI réel ni test dans le dépôt
