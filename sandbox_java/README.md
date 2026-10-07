@@ -1,89 +1,102 @@
 # Portage Java du classement de codes HS
 
-Ce bac à sable porte l’approche RAG vers le contrat industriel `HSCodeAnalysisService` :
-vectoriser une description produit, rechercher les voisins dans un index HS 2022
-précalculé, puis faire sélectionner et expliquer les codes par un LLM.
-Seuls les extraits industriels de `lestr_sources/` sont disponibles ; la validation
-locale ne garantit pas l’intégration dans l’application complète.
+Le RAG vectorise une description produit, recherche les voisins dans PostgreSQL /
+pgvector, puis fait sélectionner et expliquer les codes par un LLM. Les embeddings
+HS 2022 anglais sont précalculés : aucun recalcul du catalogue à l’import ou au démarrage.
+Seuls les extraits de `lestr_sources/` sont disponibles ; l’intégration industrielle
+complète reste à valider.
 
 ## Développer et tester
 
-Toutes les commandes ci-dessous partent de **ce dossier `sandbox_java/`**.
-Prérequis : JDK 21, Maven 3.9+ et Bash. Importer `simplified_env/pom.xml` dans l’IDE
-avec Lombok activé. Versions principales : LangChain4j 1.20.0, Jackson BOM 2.21.4,
-JUnit Jupiter 5.12.2. Aucun Spring, Docker ou serveur de base de données requis.
+Commandes depuis **`sandbox_java/`**. Prérequis : JDK 21, Maven 3.9+, Bash ;
+Docker pour les tests PostgreSQL, Compose pour la base persistante. Importer
+`simplified_env/pom.xml` dans l’IDE avec Lombok activé. Pas de Spring local.
 
-- `simplified_env/extension/` : code RAG, ressources et tests transférables.
-- `simplified_env/compat/` : contrats et utilitaires industriels, à préserver.
-- `simplified_env/runner/` : CLI, doubles et tests de compatibilité locaux.
-- `lestr_sources/` : références reçues, hors compilation et non suivies par Git.
+- `extension/` : code RAG, importeur, ressources et tests transférables.
+- `compat/` : copies des contrats industriels à préserver.
+- `runner/` : CLI, doubles et tests locaux. Ces trois modules sont dans `simplified_env/`.
 
 ```bash
-# Test ciblé ; remplacer la classe selon le changement
+# Test métier ciblé, sans Docker ni API
 ./simplified_env/dev.sh test -pl extension -am \
   -Dtest=RagServiceTest -Dsurefire.failIfNoSpecifiedTests=false
-
-# Construire le JAR (exécute aussi les tests), puis lancer sans API
+# Tests PostgreSQL autonomes : base temporaire créée et supprimée par Testcontainers
+./simplified_env/dev.sh verify -Ppgvector-it
+# Inclure l'import des 5 612 vecteurs réels et la comparaison à la référence Java
+./simplified_env/dev.sh verify -Ppgvector-it -Drag.fullIndex=true
+# JAR local et démonstration de completion sans API/base
 ./simplified_env/dev.sh package
 ./simplified_env/dev.sh run demo
-./simplified_env/dev.sh run --help
 ```
 
-`run` utilise le JAR existant, **sans reconstruire**. `test` lance toute la suite ;
-`verify` teste et package. Ajouter `-o` pour Maven hors ligne si le cache est prêt.
-`MVN=/chemin/bin/mvn` permet de choisir Maven ; sinon le script cherche dans le PATH
-puis `~/.m2/wrapper/dists`. Il utilise les settings locaux, sans dépôt privé.
-Aucun lint Java dédié n’est configuré ; `git diff --check` contrôle les espaces.
+`run` utilise `runner/target/sandbox.jar` **sans reconstruire**. Les tests ordinaires
+restent sans Docker ; le profil explicite échoue si Docker est indisponible.
+Ajouter `-o` si le cache Maven est prêt. `MVN=/chemin/bin/mvn` permet de choisir
+Maven ; sinon le script cherche dans le PATH puis `~/.m2/wrapper/dists`.
+Aucun lint Java dédié : `git diff --check` contrôle les espaces.
 
-Pour rejouer le RAG sans API, après packaging :
+## Base locale : préparer, importer, lire
+
+La base a deux comptes : `rag_import` pour le chargement explicite, `rag_reader`
+pour le service. Une transaction publie l’index complet ; un import identique ne
+modifie rien, un index différent est refusé. Aucun remplissage automatique au démarrage.
+
+Les ressources réelles sont déjà présentes localement. Sur un checkout neuf,
+`./scripts/prepare_rag_resources.sh` copie les données existantes du parent
+(`data/processed/h6_2022`, `artifacts/embeddings/h6_2022`) sans appel API.
+Ces copies, ignorées par Git, doivent être préparées avant packaging et export.
 
 ```bash
-fixtures=simplified_env/extension/src/test/resources/rag-fixtures
-./simplified_env/dev.sh run rag-replay "$fixtures/catalog.jsonl" "$fixtures" \
-  "$fixtures/query.json" "$fixtures/response.json" "Live horses" 2 2
+test -f simplified_env/.env || cp simplified_env/.env.example simplified_env/.env
+# Sur une nouvelle installation, choisir les trois mots de passe ; puis exporter pour la CLI
+set -a
+source simplified_env/.env
+set +a
+docker compose -f simplified_env/compose.yaml up -d --wait
+./simplified_env/dev.sh package
+./simplified_env/dev.sh run rag-import
 ```
 
-## Données et appels réels
+Compose prépare une base dédiée `trade_analysis`, l’extension `vector` et les rôles
+lors du premier démarrage du volume. Connexion locale sur `127.0.0.1:55432` ; pour
+changer ce port, modifier aussi les deux URL JDBC dans `.env`. Un volume existant
+conserve ses mots de passe : modifier `.env` seul ne les change pas en base.
 
-Les ressources complètes sont déjà préparées localement. Sur un nouveau checkout,
-ou après changement des données, lancer **avant packaging/export** :
-
-```bash
-./scripts/prepare_rag_resources.sh
-```
-
-Ce script copie les données existantes de `../data/processed/h6_2022/` et
-`../artifacts/embeddings/h6_2022/`, sans recalcul, vers les ressources d’`extension`.
-Ces copies sont ignorées par Git, mais incluses dans le JAR et l’export.
-Les tests ordinaires utilisent de petites fixtures et ne nécessitent ni clé ni API.
-
-La CLI lit `OPENAI_API_KEY` dans l’environnement ; elle ne charge aucun `.env`.
-Une fois la clé disponible et le JAR construit avec les ressources :
+La CLI lit `RAG_IMPORT_DB_{URL,USER,PASSWORD}` pour l’import et
+`RAG_DB_{URL,USER,PASSWORD}` pour la recherche. Elle ne charge aucun `.env`.
+Le service vérifie catalogue, manifeste, dimensions et codes en base, sans relire
+le fichier de vecteurs. Une base absente/incompatible provoque une erreur explicite.
 
 ```bash
+# Recherche réelle : OPENAI_API_KEY doit aussi être exportée (appel payant)
 ./simplified_env/dev.sh run rag "Live pure-bred breeding horses" 5 20
+# Rejeu sans API, contre la même base ; vecteur JSON de 1 536 dimensions
+./simplified_env/dev.sh run rag-replay /chemin/query.json /chemin/response.json "Live horses" 5 20
+# Arrêt conservant les données
+docker compose -f simplified_env/compose.yaml down
 ```
 
-Un appel effectue une vectorisation et une génération payantes. Par défaut :
-`text-embedding-3-small`, `gpt-4.1-mini`, 2048 tokens de sortie, 20 voisins et
-5 résultats. L’ordre du LLM est conservé ; scores fixes 2.5 dans `RagResult` et
-3 dans `SearchResult`, source `OpenAI_Hybrid`. `searchDetailed()` conserve les
-explications et questions ; `analyse()` délègue à la completion existante.
+`response.json` contient le JSON métier, sans enveloppe fournisseur. Les petites
+fixtures à deux dimensions servent aux tests, pas à la base réelle. L’ancienne
+commande `rag-replay-classpath` et les arguments catalogue/index de `rag-replay`
+sont remplacés par ce rejeu PostgreSQL. `down --volumes` supprime explicitement la
+base locale ; ne l’utiliser que pour repartir de zéro.
 
-## Intégrer dans l’application industrielle
+Défauts : `text-embedding-3-small`, `gpt-4.1-mini`, 2048 tokens de sortie, 20 voisins,
+5 résultats. Recherche cosinus exacte, égalités départagées par code ; ordre LLM
+conservé, scores fixes 2.5 détaillé / 3 industriel, source `OpenAI_Hybrid`.
+`searchDetailed()` conserve questions/explications ; `analyse()` délègue à la completion.
 
-```bash
-./simplified_env/export.sh
-```
+## Intégration industrielle
 
-L’export lance `verify`, puis produit
-`simplified_env/extension/target/transferable-sources.tar.gz` et son SHA-256.
-Il contient les sources, ressources, tests et le [guide d’intégration](simplified_env/extension/INTEGRATION.md).
-Reporter les fichiers d’`extension` après comparaison dans le module industriel,
-en conservant les packages. **Ne transférer ni `compat`, ni `runner`, ni leurs JAR/POM.**
+`./simplified_env/export.sh` vérifie le projet puis produit
+`extension/target/transferable-sources.tar.gz` et son SHA-256. Ajouter `-Ppgvector-it`
+pour vérifier aussi PostgreSQL avant export. Le [guide d’intégration](simplified_env/extension/INTEGRATION.md)
+accompagne les sources, ressources SQL/données et tests. **Ne transférer ni `compat`,
+ni `runner`, ni leurs JAR/POM.**
 
-Instancier `RagHSCodeAnalysisService.construct(openAIProperties, analysisDelegate)`
-dans l’assemblage existant et réutiliser l’instance. Les données sont chargées depuis
-le classpath ; aucun index n’est recalculé au démarrage. Dans le projet cible,
-vérifier dépendances, câblage Spring, ressources du JAR et comportement du secours :
-une exception déclenche le service suivant, une liste vide arrête la chaîne existante.
+Le module cible doit préparer sa base, lancer l’import avec son compte dédié, puis
+injecter sa `DataSource` de lecture dans
+`RagHSCodeAnalysisService.construct(openAIProperties, analysisDelegate, datasource)`.
+Le service ne possède pas le pool de connexions. Valider câblage Spring, ressources,
+dépendances et secours : exception → service suivant ; résultat vide → arrêt de la chaîne.

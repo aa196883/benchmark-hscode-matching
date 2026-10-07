@@ -56,7 +56,15 @@ class RagHSCodeServiceMT {
                 "Set OPENAI_API_KEY before running this manual test");
         if (apiKey.isBlank()) throw new IllegalArgumentException("OPENAI_API_KEY must not be blank");
         ragHSCodeService = RagHSCodeAnalysisService.construct(
-                new OpenAIProperties(apiKey), UNUSED_ANALYSIS_DELEGATE);
+                new OpenAIProperties(apiKey), UNUSED_ANALYSIS_DELEGATE, datasource());
+    }
+
+    private static javax.sql.DataSource datasource() {
+        var datasource = new org.postgresql.ds.PGSimpleDataSource();
+        datasource.setUrl(Objects.requireNonNull(System.getenv("RAG_DB_URL"), "RAG_DB_URL required"));
+        datasource.setUser(Objects.requireNonNull(System.getenv("RAG_DB_USER"), "RAG_DB_USER required"));
+        datasource.setPassword(Objects.requireNonNull(System.getenv("RAG_DB_PASSWORD"), "RAG_DB_PASSWORD required"));
+        return datasource;
     }
 
     @Test

@@ -17,7 +17,17 @@ final class RagTestSupport {
         }
     }
     static PrecomputedEmbeddingIndex index(Path directory) throws IOException {
-        return new PrecomputedEmbeddingIndex(directory, new RagCatalog(directory.resolve("catalog.jsonl")));
+        return index(new PrecomputedIndexResources(directory, new RagCatalog(directory.resolve("catalog.jsonl"))));
+    }
+    static PrecomputedEmbeddingIndex index(PrecomputedIndexResources resources) throws IOException {
+        var store = new dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore<dev.langchain4j.data.segment.TextSegment>();
+        try {
+            resources.readVectors((row, vector) -> store.add(RagIndexImporter.id(row.code()).toString(),
+                    dev.langchain4j.data.embedding.Embedding.from(vector),
+                    dev.langchain4j.data.segment.TextSegment.from(row.contextualDescription(),
+                            dev.langchain4j.data.document.Metadata.from("code", row.code()))));
+        } catch (java.sql.SQLException impossible) { throw new AssertionError(impossible); }
+        return new PrecomputedEmbeddingIndex(resources, store);
     }
     static final HSCodeAnalysisService DELEGATE = new HSCodeAnalysisService() {
         public SearchResult searchFromDescription(String description) { throw new AssertionError("Search must not delegate"); }

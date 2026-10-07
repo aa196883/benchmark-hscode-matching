@@ -33,7 +33,9 @@ Le projet industriel complet est inaccessible ; `lestr_sources/` contient les ex
 Versions épinglées : Java 21, Maven requis 3.9+, LangChain4j 1.20.0,
 Jackson BOM 2.21.4, JUnit Jupiter 5.12.2, Lombok 1.18.46, JSpecify 1.0.0,
 Commons Lang 3.20.0, Commons IO 2.21.0, SLF4J Simple 2.0.18 (runner).
-Plugins : Compiler 3.15.0, Surefire 3.5.4, Shade 3.6.0. Pas de Spring local.
+PostgreSQL JDBC 42.7.12, langchain4j-pgvector 1.20.0-beta30, Testcontainers 1.21.4.
+Image commune Compose/tests : pgvector/pgvector:0.8.1-pg17 (PostgreSQL 17).
+Plugins : Compiler 3.15.0, Surefire/Failsafe 3.5.4, Shade 3.6.0. Pas de Spring local.
 Les POM font foi ; ne pas rechercher les versions récentes pour une tâche ordinaire.
 
 ## Points d’entrée et invariants
@@ -42,20 +44,26 @@ Package RAG commun, sous `extension/src/main/java/` :
 `com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`.
 Les tests sont sous le même package dans `src/test/java/`.
 
-- `RagHSCodeAnalysisService` : `construct(properties, analysisDelegate)` charge l’index
-  une fois par instance ; `loadIndex()` le charge sans client réseau.
+- `RagHSCodeAnalysisService` : `construct(properties, analysisDelegate, datasource)` ouvre
+  l’index PostgreSQL ; `loadIndex(datasource)` l’ouvre sans client OpenAI.
+  La DataSource et son pool appartiennent à l’appelant ; pas de lecture d’environnement dans le métier.
   `searchDetailed()` orchestre le parcours ; `toSearchResult()` adapte sans nouvel appel.
 - `OpenAiRagClient` : modèles LangChain4j Responses/embeddings, injectables pour tests.
   `Config` : modèle, limite de sortie, température, effort de raisonnement.
   Défauts : `gpt-4.1-mini`, 2048, température/effort non renseignés ; `store=false`,
   schéma strict, embeddings `text-embedding-3-small`, `maxRetries(0)` côté embeddings.
   La factory utilise `OpenAIProperties.modelName()` ; délais via les modèles injectés.
-- `PrecomputedEmbeddingIndex` / `RagCatalog` : validation, empreintes, recherche
-  LangChain4j en mémoire. Ne pas utiliser le store industriel `EmbeddingService`
+- `PrecomputedEmbeddingIndex` / `RagCatalog` : recherche exacte PostgreSQL via
+  PgVectorEmbeddingStore, catalogue en mémoire, contrôle du manifeste/dimensions/codes.
+  Le compte de recherche a uniquement SELECT ; aucune création SQL au démarrage.
+  `PrecomputedIndexResources` valide les fichiers ; `RagIndexImporter.importIndex`
+  effectue un import explicite transactionnel, verrouillé et immuable (identique = aucune écriture).
+  Le store en mémoire ne sert que dans les tests ; aucune solution de repli en production. Ne pas utiliser le store industriel `EmbeddingService`
   à leur place : format et descriptions différents.
 - Ressources sous `extension/src/main/resources/` + package commun : `rag_v1.txt`,
   `rag_v1.schema.json`, `h6_2022/{catalog.jsonl,manifest.json,vectors.jsonl}`.
-  Lecture par flux, compatible JAR, aucun recalcul implicite. Données complètes déjà
+  Lecture par flux, compatible JAR, aucun recalcul implicite ; vecteurs lus uniquement à l’import.
+  `db/bootstrap.sql` prépare extension, rôles et schéma avant import (administrateur, une seule fois). Données complètes déjà
   présentes localement, ignorées par Git ; fixtures autonomes dans `src/test/resources/rag-fixtures/`.
 - `runner/.../local/lestr/sandbox/Main.java` et `RagMain.java` : CLI/assemblage local.
   `extension` ne doit ni importer le runner ni redéfinir les classes de `compat`.
@@ -77,6 +85,13 @@ Les tests sont sous le même package dans `src/test/java/`.
 # Test ciblé du socle / frontières
 ./simplified_env/dev.sh test -o -pl runner -am \
   -Dtest=SourceBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false
+# Intégration autonome Docker / ajouter le jeu complet existant (sans API)
+./simplified_env/dev.sh verify -Ppgvector-it
+./simplified_env/dev.sh verify -Ppgvector-it -Drag.fullIndex=true
+# IT ciblé, après validation des tests ordinaires
+./simplified_env/dev.sh verify -Ppgvector-it -pl extension -am \
+  '-Dit.test=PgVectorIndexIT#exactTiesCrossingLimitUseHsCodeOrder' -Dtest=NoUnitTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
 # Compiler sans tests / construire le JAR / suite complète
 ./simplified_env/dev.sh package -o -DskipTests
 ./simplified_env/dev.sh package -o
@@ -104,21 +119,33 @@ Choisir les tests : `RagServiceTest`/`ReferenceCasesTest` pour le métier,
 `ClasspathLoadingTest`/`ResourceStreamTest` pour ressources et flux ; tests
 `*CompatibilityTest` du runner pour le socle. `RagHSCodeServiceMT` est exclu des
 sélections ordinaires et exige `RUN_OPENAI_MT=true` plus une sélection explicite.
-Les tests ordinaires sont sans API payante ; certains simulent HTTP en boucle locale.
+Les tests ordinaires sont sans API payante ni Docker ; certains simulent HTTP en boucle locale.
+`PgVectorIndexIT` exige Docker, crée/détruit sa propre base sans Compose, teste import/recherche/
+droits/rollback/concurrence/JAR. Le profil explicite ne doit pas ignorer un Docker indisponible.
 
 ## Configuration, secrets et transfert
 
 La configuration et les secrets sont déjà en place dans l’environnement de travail :
 ne pas les recréer, les afficher, les passer en argument ou les committer.
-Le Java lit uniquement `OPENAI_API_KEY` dans l’environnement, sans chargement de `.env`.
-Lors de l’audit, cette variable n’était pas exportée dans le shell : vérifier seulement
+La CLI lit `OPENAI_API_KEY`, `RAG_DB_{URL,USER,PASSWORD}` (lecture) et
+`RAG_IMPORT_DB_{URL,USER,PASSWORD}` (import), sans chargement de `.env`.
+La base locale et `simplified_env/.env` sont déjà initialisés. Sur un nouveau checkout,
+copier `.env.example` vers `.env` ignoré, choisir les mots de passe et exporter les
+variables. Ne pas écraser un `.env` existant.
+Compose charge ce fichier ; le Java exige les variables exportées.
+`docker compose -f simplified_env/compose.yaml up -d --wait`, puis JAR à jour et
+`./simplified_env/dev.sh run rag-import`. `down` conserve le volume ; `down --volumes` le détruit.
+Le service `rag` et `rag-replay VECTOR_JSON RESPONSE_JSON DESCRIPTION [TOP_K [RETRIEVAL_K]]`
+utilisent la base importée. Les vecteurs de rejeu doivent correspondre à ses dimensions.
+Aucun réimport implicite, aucune migration automatique d’un index différent.
+Lors de l’audit, `OPENAI_API_KEY` n’était pas exportée dans le shell : vérifier seulement
 sa présence avant un appel réel et utiliser le mécanisme existant de chargement ;
 ne pas supposer qu’un secret configuré est déjà accessible au processus Java.
 
 Le script de préparation copie `../data/processed/h6_2022/catalog.jsonl` et
 `../artifacts/embeddings/h6_2022/{manifest.json,vectors.jsonl}` sans appeler d’API.
 Seulement si une tâche demande la parité Python :
-`../.venv/bin/python scripts/verify_rag_parity.py --classpath` (JAR à jour) ;
+`../.venv/bin/python scripts/verify_rag_parity.py` (JAR à jour, base importée et variables RAG_DB exportées) ;
 `../.venv/bin/python scripts/generate_rag_fixtures.py` régénère les fixtures suivies.
 
 L’export produit `simplified_env/extension/target/transferable-sources.tar.gz`

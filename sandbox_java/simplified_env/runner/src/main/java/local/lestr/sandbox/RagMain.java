@@ -13,22 +13,40 @@ import java.util.Map;
 /** Local wiring for packaged resources and explicit replay fixtures. */
 final class RagMain {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static javax.sql.DataSource datasource(boolean importer) {
+        String prefix = importer ? "RAG_IMPORT_DB_" : "RAG_DB_";
+        var datasource = new org.postgresql.ds.PGSimpleDataSource();
+        datasource.setUrl(environment(prefix + "URL"));
+        datasource.setUser(environment(prefix + "USER"));
+        datasource.setPassword(environment(prefix + "PASSWORD"));
+        datasource.setConnectTimeout(10);
+        datasource.setSocketTimeout(60);
+        return datasource;
+    }
+    private static String environment(String name) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(name + " required");
+        return value;
+    }
     static int run(String[] args) throws Exception {
-        boolean external = args[0].equals("rag-replay");
-        boolean replay = external || args[0].equals("rag-replay-classpath");
-        int descriptionPosition = external ? 5 : replay ? 3 : 1;
+        if (args[0].equals("rag-import")) {
+            if (args.length != 1) throw new IllegalArgumentException("rag-import takes no arguments");
+            boolean imported = RagIndexImporter.importIndex(datasource(true), PrecomputedIndexResources.packaged());
+            System.out.println(imported ? "RAG index imported" : "RAG index already imported and verified");
+            return 0;
+        }
+        boolean replay = args[0].equals("rag-replay");
+        int descriptionPosition = replay ? 3 : 1;
         if (args.length < descriptionPosition + 1 || args.length > descriptionPosition + 3)
             throw new IllegalArgumentException("Use --help for RAG arguments");
         int topK = args.length > descriptionPosition + 1 ? Integer.parseInt(args[descriptionPosition + 1]) : 5;
         int retrievalK = args.length > descriptionPosition + 2 ? Integer.parseInt(args[descriptionPosition + 2]) : 20;
-        var index = external
-                ? new PrecomputedEmbeddingIndex(Path.of(args[2]), new RagCatalog(Path.of(args[1])))
-                : RagHSCodeAnalysisService.loadIndex();
+        var index = RagHSCodeAnalysisService.loadIndex(datasource(false));
         RagEmbeddingClient embeddings;
         RagGenerationClient generation;
         HSCodeAnalysisService analysisDelegate;
         if (replay) {
-            int vectorPosition = external ? 3 : 1;
+            int vectorPosition = 1;
             double[] vector = JSON.readValue(Files.readString(Path.of(args[vectorPosition])), double[].class);
             String response = Files.readString(Path.of(args[vectorPosition + 1]));
             embeddings = new RagEmbeddingClient() {

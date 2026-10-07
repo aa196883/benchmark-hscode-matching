@@ -1,120 +1,77 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import dev.langchain4j.data.embedding.Embedding;
-import dev.langchain4j.store.embedding.EmbeddingMatch;
-import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
-import dev.langchain4j.store.embedding.inmemory.InMemoryEmbeddingStore;
-import java.io.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.security.DigestInputStream;
+import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.store.embedding.*;
+import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
+import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.util.*;
-import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
+import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.require;
 
-/** Immutable exact cosine index. Loads precomputed resources once; never computes catalogue embeddings. */
+/** Read-only PostgreSQL index. Opening never imports vectors or creates database objects. */
 public final class PrecomputedEmbeddingIndex {
-    public static final String MODEL = "text-embedding-3-small";
-    @FunctionalInterface
-    public interface ResourceOpener {
-        InputStream open(String name) throws IOException;
-    }
+    public static final String MODEL = PrecomputedIndexResources.MODEL;
     private final RagCatalog catalog;
-    private final List<RagCatalog.Row> rows;
-    private final InMemoryEmbeddingStore<RagCatalog.Row> store = new InMemoryEmbeddingStore<>();
+    private final EmbeddingStore<TextSegment> store;
     private final int dimensions;
     private final Integer configuredDimensions;
+    private final int size;
 
-    public PrecomputedEmbeddingIndex(Path directory, RagCatalog catalog) throws IOException {
-        this(name -> Files.newInputStream(directory.resolve(name)), catalog);
+    public PrecomputedEmbeddingIndex(DataSource datasource, PrecomputedIndexResources resources) throws SQLException {
+        this(resources, openStore(datasource, resources));
     }
-    /** Reads and closes each resource stream. */
-    public PrecomputedEmbeddingIndex(ResourceOpener resources, RagCatalog catalog) throws IOException {
-        this.catalog = Objects.requireNonNull(catalog);
-        JsonNode manifest;
-        try (var input = resources.open("manifest.json")) {
-            manifest = parse(new String(input.readAllBytes(), StandardCharsets.UTF_8));
+    // Test seam: production always opens PgVectorEmbeddingStore through the public constructor.
+    PrecomputedEmbeddingIndex(PrecomputedIndexResources resources, EmbeddingStore<TextSegment> store) {
+        this.catalog = resources.catalog;
+        this.dimensions = resources.dimensions;
+        this.configuredDimensions = resources.configuredDimensions;
+        this.size = resources.size();
+        this.store = Objects.requireNonNull(store);
+    }
+    private static PgVectorEmbeddingStore openStore(DataSource datasource, PrecomputedIndexResources resources)
+            throws SQLException {
+        try (var connection = datasource.getConnection()) {
+            RagIndexImporter.verify(connection, resources);
         }
-        require(manifest != null && manifest.isObject(), "Invalid index manifest");
-        require(manifest.path("schema_version").isIntegralNumber() && manifest.path("schema_version").intValue() == 1
-                && "2022".equals(manifest.path("edition").asText()) && "en".equals(manifest.path("language").asText())
-                && "contextual_description".equals(manifest.path("text_field").asText()), "Incompatible index scope or schema");
-        require("openai".equals(manifest.path("provider").asText()) && MODEL.equals(manifest.path("config").path("model").asText())
-                && MODEL.equals(manifest.path("response_model").asText()), "Index must use " + MODEL);
-        require("raw_on_disk_l2_in_memory".equals(manifest.path("normalization").asText()), "Unsupported index normalization");
-        require(manifest.path("dimensions").isInt() && manifest.path("dimensions").intValue() > 0, "Invalid dimensions");
-        dimensions = manifest.get("dimensions").intValue();
-        JsonNode configured = manifest.path("config").path("dimensions");
-        require(configured.isMissingNode() || configured.isNull() || (configured.isInt() && configured.intValue() == dimensions), "Inconsistent configured dimensions");
-        configuredDimensions = configured.isInt() ? configured.intValue() : null;
-        rows = catalog.candidates();
-        require(catalog.descriptionsSha256().equals(manifest.path("source").path("descriptions_sha256").asText()), "Catalogue descriptions differ from the index");
-        require(manifest.path("count").isInt() && manifest.path("count").intValue() == rows.size(), "Inconsistent index count");
-        var digest = digest();
-        int count = 0;
-        try (var input = new DigestInputStream(resources.open("vectors.jsonl"), digest);
-             var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                JsonNode row = parse(line);
-                require(row != null && row.isObject() && count < rows.size() && rows.get(count).code().equals(row.path("code").asText()), "Invalid vector order, duplicate or extra code");
-                double[] vector = vector(row.path("vector"), dimensions);
-                float[] stored = new float[dimensions];
-                double normSquared = 0;
-                for (int j = 0; j < dimensions; j++) {
-                    stored[j] = (float) vector[j];
-                    require(Float.isFinite(stored[j]), "Vector incompatible with float32");
-                    normSquared += (double) stored[j] * stored[j];
-                }
-                double norm = Math.sqrt(normSquared);
-                require(Double.isFinite(norm) && norm > 0, "Zero float32 vector norm");
-                for (int j = 0; j < dimensions; j++) stored[j] = (float) (stored[j] / norm);
-                var candidate = rows.get(count++);
-                store.add(candidate.code(), Embedding.from(stored), candidate);
-            }
-        }
-        require(count == rows.size() && HexFormat.of().formatHex(digest.digest()).equals(manifest.path("vectors_sha256").asText()), "Incomplete index or invalid vectors checksum");
+        return PgVectorEmbeddingStore.datasourceBuilder().datasource(datasource)
+                .table("rag.embeddings").dimension(resources.dimensions)
+                .createTable(false).dropTableFirst(false).useIndex(false)
+                .skipCreateVectorExtension(true).build();
     }
     public List<RagCatalog.Row> search(double[] vector, int topK) {
         require(topK > 0, "topK must be positive");
-        double norm = validate(vector, dimensions);
+        double norm = PrecomputedIndexResources.validate(vector, dimensions);
         float[] query = new float[dimensions];
         for (int j = 0; j < dimensions; j++) query[j] = (float) (vector[j] / norm);
-        // Retrieve all matches so ties at the topK boundary are resolved by HS code.
-        return store.search(EmbeddingSearchRequest.builder()
-                        .queryEmbedding(Embedding.from(query))
-                        .maxResults(rows.size())
-                        .minScore(0.0)
-                        .build()).matches().stream()
-                .sorted(Comparator.<EmbeddingMatch<RagCatalog.Row>>comparingDouble(EmbeddingMatch::score)
-                        .reversed().thenComparing(match -> match.embedded().code()))
-                .limit(topK)
-                .map(EmbeddingMatch::embedded)
-                .toList();
-    }
-
-    static double[] vector(JsonNode array, int dimensions) {
-        require(array.isArray() && array.size() == dimensions, "Invalid vector dimensions");
-        double[] vector = new double[dimensions];
-        for (int j = 0; j < dimensions; j++) {
-            require(array.get(j).isNumber(), "Non-numeric vector component");
-            vector[j] = array.get(j).doubleValue();
+        int wanted = Math.min(topK, size);
+        int limit = Math.min(wanted + 1, size);
+        List<EmbeddingMatch<TextSegment>> matches;
+        while (true) {
+            matches = store.search(EmbeddingSearchRequest.builder().queryEmbedding(Embedding.from(query))
+                    .maxResults(limit).minScore(0.0).build()).matches().stream()
+                    .sorted(Comparator.<EmbeddingMatch<TextSegment>>comparingDouble(EmbeddingMatch::score)
+                            .reversed().thenComparing(match -> code(match.embedded())))
+                    .toList();
+            // Include the entire tie group crossing K, without transferring the full index normally.
+            if (limit == size || matches.size() < limit || matches.size() <= wanted
+                    || Double.compare(matches.get(wanted - 1).score(), matches.getLast().score()) != 0) break;
+            limit = Math.min(size, limit * 2);
         }
-        validate(vector, dimensions);
-        return vector;
+        return matches.stream().limit(wanted).map(match -> {
+            var row = catalog.row(code(match.embedded()));
+            require(row != null && row.eligible(), "Unknown database candidate");
+            return row;
+        }).toList();
     }
-    static double validate(double[] vector, int dimensions) {
-        require(vector != null && vector.length == dimensions && dimensions > 0, "Invalid vector dimensions");
-        double norm = 0;
-        for (double value : vector) {
-            require(Double.isFinite(value), "Non-finite vector component");
-            norm = Math.hypot(norm, value);
-        }
-        require(Double.isFinite(norm) && norm > 0, "Zero or non-finite vector norm");
-        return norm;
+    private static String code(TextSegment segment) {
+        require(segment != null, "Missing database segment");
+        String code = segment.metadata().getString("code");
+        require(code != null, "Missing database HS code");
+        return code;
     }
     public int dimensions() { return dimensions; }
     public Integer configuredDimensions() { return configuredDimensions; }
     public RagCatalog catalog() { return catalog; }
-    public int size() { return rows.size(); }
+    public int size() { return size; }
 }

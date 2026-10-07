@@ -1,8 +1,5 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
-import com.semsoft.lestr.shared.kernel.goods.HSCode;
-import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
-import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.io.*;
@@ -13,44 +10,55 @@ import java.util.*;
 import java.util.jar.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Loads the actual service classes from an isolated JAR containing small resource fixtures. */
+/** Reads packaged import resources from an isolated JAR containing small fixtures. */
 class ClasspathLoadingTest {
     private static final String PACKAGE = "com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia";
     private static final String PREFIX = PACKAGE.replace('.', '/') + "/";
     @TempDir Path directory;
 
-    @Test void factoryLoadsResourcesFromJarWithoutPathsOrNetwork() throws Exception {
+    @Test void importReadsResourcesFromJarWithoutFilesystemPaths() throws Exception {
         try (var loader = loader(null, false)) {
-            Class<?> serviceClass = loader.loadClass(PACKAGE + ".RagHSCodeAnalysisService");
-            assertEquals("jar", serviceClass.getResource("h6_2022/catalog.jsonl").getProtocol());
-            Object index = serviceClass.getMethod("loadIndex").invoke(null);
-            assertEquals(3, index.getClass().getMethod("size").invoke(index));
-            var service = (HSCodeAnalysisService) serviceClass.getMethod("construct", OpenAIProperties.class, HSCodeAnalysisService.class)
-                    .invoke(null, new OpenAIProperties("unused-offline-key"), RagTestSupport.DELEGATE);
-            assertEquals("description 010121", service.analyse("description", HSCode.hsCode("010121")).analyse());
-            var error = assertThrows(InvocationTargetException.class,
-                    () -> serviceClass.getMethod("searchDetailed", String.class).invoke(service, ""));
-            assertInstanceOf(IllegalArgumentException.class, error.getCause());
+            Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
+            assertEquals("jar", type.getResource("h6_2022/catalog.jsonl").getProtocol());
+            Object resources = type.getMethod("packaged").invoke(null);
+            assertEquals(3, type.getMethod("size").invoke(resources));
+            readVectors(type, resources);
+        }
+    }
+    @Test void runtimeResourcesDoNotRequireVectors() throws Exception {
+        try (var loader = loader("vectors.jsonl", false)) {
+            Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
+            Object resources = type.getMethod("packaged").invoke(null);
+            assertEquals(3, type.getMethod("size").invoke(resources));
+            var error = assertThrows(InvocationTargetException.class, () -> readVectors(type, resources));
+            assertInstanceOf(FileNotFoundException.class, error.getCause());
         }
     }
     @Test void missingCatalogueNamesTheClasspathResource() throws Exception { missing("catalog.jsonl"); }
     @Test void missingManifestNamesTheClasspathResource() throws Exception { missing("manifest.json"); }
-    @Test void missingVectorsNameTheClasspathResource() throws Exception { missing("vectors.jsonl"); }
-    @Test void corruptPackagedIndexIsRejected() throws Exception {
+    @Test void corruptPackagedIndexIsRejectedDuringImportValidation() throws Exception {
         try (var loader = loader(null, true)) {
-            var type = loader.loadClass(PACKAGE + ".RagHSCodeAnalysisService");
-            var error = assertThrows(InvocationTargetException.class, () -> type.getMethod("loadIndex").invoke(null));
+            Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
+            Object resources = type.getMethod("packaged").invoke(null);
+            var error = assertThrows(InvocationTargetException.class, () -> readVectors(type, resources));
             assertInstanceOf(IllegalArgumentException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains("checksum"));
         }
     }
+    private void readVectors(Class<?> type, Object resources) throws Exception {
+        Class<?> consumer = type.getClassLoader().loadClass(PACKAGE + ".PrecomputedIndexResources$VectorConsumer");
+        var count = new java.util.concurrent.atomic.AtomicInteger();
+        Object callback = java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{consumer},
+                (proxy, method, args) -> { count.incrementAndGet(); return null; });
+        type.getMethod("readVectors", consumer).invoke(resources, callback);
+        assertEquals(3, count.get());
+    }
     private void missing(String name) throws Exception {
         try (var loader = loader(name, false)) {
-            var type = loader.loadClass(PACKAGE + ".RagHSCodeAnalysisService");
-            var error = assertThrows(InvocationTargetException.class, () -> type.getMethod("construct", OpenAIProperties.class, HSCodeAnalysisService.class)
-                    .invoke(null, new OpenAIProperties("unused-offline-key"), RagTestSupport.DELEGATE));
+            Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
+            var error = assertThrows(InvocationTargetException.class, () -> type.getMethod("packaged").invoke(null));
             assertInstanceOf(FileNotFoundException.class, error.getCause());
-            assertTrue(error.getCause().getMessage().contains(PREFIX + "h6_2022/" + name));
+            assertTrue(error.getCause().getMessage().contains(name));
         }
     }
     private URLClassLoader loader(String excluded, boolean corrupt) throws Exception {

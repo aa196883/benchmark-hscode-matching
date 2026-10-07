@@ -1,0 +1,23 @@
+name: hs-rag
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg17
+    environment:
+      POSTGRES_DB: trade_analysis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${RAG_POSTGRES_PASSWORD:?Set RAG_POSTGRES_PASSWORD}
+      RAG_IMPORT_DB_PASSWORD: ${RAG_IMPORT_DB_PASSWORD:?Set RAG_IMPORT_DB_PASSWORD}
+      RAG_DB_PASSWORD: ${RAG_DB_PASSWORD:?Set RAG_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${RAG_DB_PORT:-55432}:5432"
+    volumes:
+      - rag-postgres:/var/lib/postgresql/data
+      - ./docker/init.sh:/docker-entrypoint-initdb.d/10-rag.sh:ro
+      - ./extension/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/db/bootstrap.sql:/opt/rag/bootstrap.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d trade_analysis"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+volumes:
+  rag-postgres:

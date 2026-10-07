@@ -25,19 +25,19 @@ class ResourceStreamTest {
     @Test void indexStreamsCloseAfterSuccess() throws Exception {
         var streams = new ArrayList<TrackedStream>();
         var catalog = new RagCatalog(new ByteArrayInputStream(fixture("catalog.jsonl")));
-        var index = new PrecomputedEmbeddingIndex(name -> {
+        var index = RagTestSupport.index(new PrecomputedIndexResources(name -> {
             var stream = new TrackedStream(fixture(name)); streams.add(stream); return stream;
-        }, catalog);
+        }, catalog));
         assertEquals(3, index.size()); assertEquals(2, streams.size());
         assertTrue(streams.stream().allMatch(stream -> stream.closed));
     }
     @Test void vectorStreamClosesWhenValidationFails() throws Exception {
         var streams = new ArrayList<TrackedStream>();
         var catalog = new RagCatalog(new ByteArrayInputStream(fixture("catalog.jsonl")));
-        assertThrows(IllegalArgumentException.class, () -> new PrecomputedEmbeddingIndex(name -> {
+        assertThrows(IllegalArgumentException.class, () -> RagTestSupport.index(new PrecomputedIndexResources(name -> {
             byte[] bytes = name.equals("vectors.jsonl") ? "invalid".getBytes(java.nio.charset.StandardCharsets.UTF_8) : fixture(name);
             var stream = new TrackedStream(bytes); streams.add(stream); return stream;
-        }, catalog));
+        }, catalog)));
         assertEquals(2, streams.size()); assertTrue(streams.stream().allMatch(stream -> stream.closed));
     }
 }

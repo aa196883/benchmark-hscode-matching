@@ -9,6 +9,8 @@ import com.semsoft.lestr.tradeanalysis.domain.model.*;
 import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
 import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import java.io.*;
+import javax.sql.DataSource;
+import java.sql.SQLException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
@@ -17,7 +19,6 @@ import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.
 public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
     public static final int DEFAULT_RETRIEVAL_K = 20;
     public static final int INDUSTRIAL_SCORE = 3;
-    private static final String INDEX_RESOURCE_DIRECTORY = "h6_2022/";
     private static final String PROMPT = resource("rag_v1.txt");
     private static final JsonNode SCHEMA = parse(resource("rag_v1.schema.json"));
     private final PrecomputedEmbeddingIndex index;
@@ -36,17 +37,16 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         require(Objects.equals(index.configuredDimensions(), embeddings.dimensions()), "Query vectorizer config must match the index");
     }
     public static RagHSCodeAnalysisService construct(OpenAIProperties properties,
-                                                     HSCodeAnalysisService analysisDelegate) throws IOException {
-        var index = loadIndex();
+                                                     HSCodeAnalysisService analysisDelegate, DataSource datasource) throws IOException, SQLException {
+        var index = loadIndex(datasource);
         var defaults = OpenAiRagClient.Config.defaults();
         var config = new OpenAiRagClient.Config(properties.modelName(), defaults.maxOutputTokens(), null, null);
         var client = new OpenAiRagClient(properties.apiKey(), index.configuredDimensions(), config);
         return new RagHSCodeAnalysisService(index, client, client, analysisDelegate, DEFAULT_RETRIEVAL_K);
     }
-    /** Loads the packaged catalogue and index; no file-system paths or temporary extraction are needed. */
-    public static PrecomputedEmbeddingIndex loadIndex() throws IOException {
-        var catalog = new RagCatalog(openResource(INDEX_RESOURCE_DIRECTORY + "catalog.jsonl"));
-        return new PrecomputedEmbeddingIndex(name -> openResource(INDEX_RESOURCE_DIRECTORY + name), catalog);
+    /** Checks the database against packaged catalogue/manifest; does not read or import vectors. */
+    public static PrecomputedEmbeddingIndex loadIndex(DataSource datasource) throws IOException, SQLException {
+        return new PrecomputedEmbeddingIndex(datasource, PrecomputedIndexResources.packaged());
     }
     @Override public SearchResult searchFromDescription(String description) {
         return toSearchResult(searchDetailed(description));

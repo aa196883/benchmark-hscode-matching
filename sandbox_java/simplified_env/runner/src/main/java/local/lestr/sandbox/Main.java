@@ -16,13 +16,13 @@ public final class Main {
     private Main() {}
     public static void main(String[] args) throws Exception {
         String command = args.length == 0 ? "demo" : args[0];
-        if (command.equals("rag") || command.equals("rag-replay") || command.equals("rag-replay-classpath")) {
+        if (command.equals("rag") || command.equals("rag-replay") || command.equals("rag-import")) {
             if (RagMain.run(args) != 0) System.exit(1);
             return;
         }
         if (command.equals("--help")) {
             System.out.println("demo | search CATALOG RESPONSE_JSON DESCRIPTION | analyse CATALOG RESPONSE_TEXT DESCRIPTION CODE | live-search CATALOG DESCRIPTION | live-analyse CATALOG DESCRIPTION CODE");
-            System.out.println("rag DESCRIPTION [TOP_K [RETRIEVAL_K]] | rag-replay-classpath VECTOR_JSON RESPONSE_JSON DESCRIPTION [TOP_K [RETRIEVAL_K]] | rag-replay CATALOG INDEX VECTOR_JSON RESPONSE_JSON DESCRIPTION [TOP_K [RETRIEVAL_K]]");
+            System.out.println("rag-import | rag DESCRIPTION [TOP_K [RETRIEVAL_K]] | rag-replay VECTOR_JSON RESPONSE_JSON DESCRIPTION [TOP_K [RETRIEVAL_K]]");
             return;
         }
         if (command.equals("demo")) {

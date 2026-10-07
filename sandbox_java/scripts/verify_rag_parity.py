@@ -1,4 +1,4 @@
-"""Compare business results of the reference implementation and packaged Java RAG, without API calls."""
+"""Compare business results of the reference implementation and packaged Java RAG, against the imported PostgreSQL index, without API calls."""
 from pathlib import Path
 import argparse
 import json
@@ -22,7 +22,6 @@ def main():
     parser.add_argument('--catalog', type=Path, default=ROOT/'data/processed/h6_2022/catalog.jsonl')
     parser.add_argument('--index', type=Path, default=ROOT/'artifacts/embeddings/h6_2022')
     parser.add_argument('--jar', type=Path, default=ROOT/'sandbox_java/simplified_env/runner/target/sandbox.jar')
-    parser.add_argument("--classpath", action="store_true", help="Load the packaged Java index without file-system paths")
     args = parser.parse_args()
     catalog = Catalog(args.catalog)
     index = EmbeddingIndex(args.index, catalog)
@@ -47,11 +46,8 @@ def main():
             py = RAG(provider, ModelConfig(), retriever, 20).predict('offline parity query', 5, PredictionContext(catalog))
             (folder/'query.json').write_text(json.dumps(vector))
             (folder/'response.json').write_text(json.dumps(answer))
-            command = ['java','-jar',str(args.jar.resolve()),'rag-replay',str(args.catalog.resolve()),str(args.index.resolve()),
-                       str(folder/'query.json'),str(folder/'response.json'),'offline parity query','5','20']
-            if args.classpath:
-                command = ['java', '-jar', str(args.jar.resolve()), 'rag-replay-classpath',
-                           str(folder/'query.json'), str(folder/'response.json'), 'offline parity query', '5', '20']
+            command = ['java', '-jar', str(args.jar.resolve()), 'rag-replay',
+                       str(folder/'query.json'), str(folder/'response.json'), 'offline parity query', '5', '20']
             completed = subprocess.run(command, check=True, text=True, capture_output=True, cwd=folder, timeout=90)
             output = json.loads(completed.stdout); java = output['prediction']
             assert java['status'] == py.status == 'ok'
@@ -62,7 +58,7 @@ def main():
             assert all(c['score'] == 3 for c in output['search_result']['matchingHSCodes'])
             reports.append({'query_index_code':index.codes[position], 'retrieval_k':20, 'same_candidates':True})
     report = {'index_count':len(index.codes), 'dimensions':index.manifest['dimensions'],
-              'vectors_sha256':index.manifest['vectors_sha256'], 'api_calls':0, 'resource_mode':'classpath' if args.classpath else 'filesystem', 'cases':reports}
+              'vectors_sha256':index.manifest['vectors_sha256'], 'api_calls':0, 'resource_mode':'postgresql', 'cases':reports}
     target = ROOT/'sandbox_java/simplified_env/extension/target/full-index-parity.json'
     target.parent.mkdir(parents=True,exist_ok=True)
     target.write_text(json.dumps(report,indent=2)+'\n')
