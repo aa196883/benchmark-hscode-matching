@@ -1,39 +1,20 @@
-# Mise à jour du service RAG intégré
+# Intégration du RAG Java
 
-Les sources utilisent désormais directement le package industriel
-`com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia`.
-Les contrats métier, le classement et les scores restent inchangés.
+Cette archive contient les sources, ressources et tests du module `extension`.
+L’application industrielle complète n’étant pas disponible dans le bac à sable,
+son câblage et ses dépendances doivent être validés dans le module cible.
 
-## Copier les fichiers
-
-Reporter les sources et tests de l’archive sous les mêmes chemins dans le module
-industriel. Mettre également à jour `src/main/resources` : cette archive contient
-les données complètes, en plus du prompt et du schéma.
-
-```text
-src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/
-  rag_v1.txt
-  rag_v1.schema.json
-  h6_2022/
-    catalog.jsonl
-    manifest.json
-    vectors.jsonl
-```
-
-Conserver ces fichiers sans filtrage Maven ni modification de leur contenu.
-Les empreintes sont vérifiées au chargement. Le nom du dossier Maven est
-`resources` (pas `ressources`). Aucune extraction du JAR vers un dossier temporaire
-n’est nécessaire : les ressources sont lues comme des flux du classpath.
-
-Ne pas ajouter les classes/JAR de compatibilité ou le runner local au projet
-industriel. Les sources ont besoin de Java 21, Jackson Databind, LangChain4j 1.20.0
-(`langchain4j-open-ai`) et des contrats
-industriels existants. Les tests utilisent JUnit Jupiter ; la completion conserve
-ses dépendances habituelles.
-
-## Modifier l’instanciation
-
-Supprimer les deux arguments `Path` des appels à la factory :
+1. Comparer puis reporter `src/main` et les tests utiles dans le module qui contient
+   la completion, en conservant les packages. Ne copier ni `compat`, ni `runner`,
+   ni leurs JAR/POM : les contrats industriels existent déjà.
+2. Aligner les dépendances avec le projet cible. Socle local : Java 21,
+   LangChain4j 1.20.0 (`langchain4j`, `langchain4j-open-ai`), Jackson BOM 2.21.4 /
+   Databind ; JUnit Jupiter 5.12.2 pour les tests.
+3. Inclure sans filtrage les cinq ressources sous
+   `src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/` :
+   `rag_v1.txt`, `rag_v1.schema.json`, `h6_2022/catalog.jsonl`,
+   `h6_2022/manifest.json`, `h6_2022/vectors.jsonl`.
+4. Réutiliser la configuration/secrets industriels et assembler le service :
 
 ```java
 HSCodeAnalysisService completion = CompletionHSCodeChatServiceImpl.construct(
@@ -42,63 +23,21 @@ RagHSCodeAnalysisService rag = RagHSCodeAnalysisService.construct(
     openAIProperties, completion);
 ```
 
-La factory peut lever `IOException` si une ressource manque ou ne peut être lue ;
-un contenu incompatible lève `IllegalArgumentException`. Réutiliser l’instance
-ainsi créée : l’index est chargé une fois par construction, pas à chaque recherche.
-Il n’est pas chargé pendant l’initialisation statique de la classe, pour conserver
-des erreurs de chargement explicites et permettre les tests avec un index injecté.
+Réutiliser l’instance : l’index est chargé une fois par construction, via des flux du
+classpath, sans extraction ni recalcul. La factory peut lever `IOException` ; les
+données incompatibles sont rejetées. Les modèles réseau peuvent être configurés
+via le constructeur injectable d’`OpenAiRagClient` (délais, etc.).
 
-Le constructeur prenant un index et des clients reste disponible pour les tests
-et l’injection de configuration. `loadIndex()` charge le même index embarqué sans
-créer de client réseau. Les constructeurs de bas niveau acceptant des chemins
-restent utilisables par les outils de rejeu ; la factory du service ne prend plus
-de chemins. Le constructeur par flux de l’index reçoit uniquement un
-`ResourceOpener` et le catalogue.
+`searchFromDescription()` retourne au plus cinq codes, dans l’ordre LLM, avec score
+fixe 3 et source `OpenAI_Hybrid`. `searchDetailed()` conserve explications/questions
+et score 2.5 ; `toSearchResult()` adapte sans nouvel appel. `analyse()` délègue à la
+completion. Les erreurs techniques et le rejet de tous les codes proposés lèvent
+une exception ; une abstention produit une liste vide. La chaîne industrielle
+existante poursuit après exception, mais s’arrête sur un résultat vide.
 
-Le service utilise `Source.OpenAI_Hybrid`. Un rejet de tous les candidats lève
-`HSCodeAnalysisException` ; une abstention retourne une liste vide. `analyse()`
-reste déléguée. `searchDetailed()` conserve explications et questions avec le score
-constant 2.5 ; `toSearchResult()` projette vers le score industriel 3 sans autre
-appel réseau ni reclassement.
-
-Le contrat `RagResult` contient uniquement `status`, `candidates` et
-`missing_information`. Chaque candidat contient `code`, `rank`, `description`,
-`score` et `explanation`. Adapter les éventuels consommateurs de `metadata`,
-`error`, `references` et `score_type`, désormais supprimés. Les erreurs remontent
-par exception dès la recherche. L’index retourne les lignes du catalogue triées,
-sans DTO de diagnostic ni exposition du manifeste.
-
-## Client fournisseur LangChain4j
-
-`OpenAiRagClient` utilise directement les modèles LangChain4j, sans `ChatService`
-ni code de transport HTTP. `RagGenerationClient.generate()` retourne le texte
-JSON métier ; `RagEmbeddingClient.embed()` retourne uniquement un `double[]`.
-Le constructeur injectable reçoit un `ChatModel`, un `EmbeddingModel` et les
-dimensions configurées. `Config` ne contient plus de délai ; les modèles
-utilisent leurs valeurs par défaut ou la configuration fournie à l’injection.
-
-Le service désérialise le texte avec Jackson et conserve le filtrage des codes.
-Les erreurs techniques remontent à la chaîne de secours. L’enveloppe brute,
-les usages, les refus techniques et les diagnostics HTTP ne font plus partie
-du résultat détaillé. Les fichiers de rejeu contiennent le JSON métier seul.
-
-## Test manuel et vérifications
-
-`RagHSCodeServiceMT` utilise `System.getenv("OPENAI_API_KEY")` à la place de
-`Utils.getSecret`. Il est activé uniquement si `RUN_OPENAI_MT=true` et sélectionné
-explicitement par Maven, par exemple depuis la racine de ce dépôt :
-
-```bash
-RUN_OPENAI_MT=true sandbox_java/simplified_env/dev.sh test \
-  -Dtest=RagHSCodeServiceMT -Dsurefire.failIfNoSpecifiedTests=false
-```
-
-Définir préalablement `OPENAI_API_KEY` dans l’environnement. Ce test effectue de
-vrais appels, avec les coûts et la variabilité associés ; il n’est pas exécuté
-par les vérifications ordinaires. Dans le dépôt industriel, utiliser le wrapper
-et la sélection de module habituels avec les mêmes options de test.
-
-Vérifier dans le module cible la présence des cinq ressources dans le JAR final,
-le démarrage depuis un autre répertoire, la configuration OpenAI et les appels
-métier. Les tests exportés couvrent le chargement depuis un JAR isolé, les fichiers
-absents/corrompus, la fermeture des flux, les cas métier et les appels à des modèles LangChain4j simulés. Aucun test OpenAI réel n’a été lancé lors de cette mise à jour.
+Valider dans le projet cible : compilation et tests avec les vrais contrats,
+assemblage Spring et ordre du secours, ressources dans le JAR final, sérialisation
+pour les appelants, puis quelques appels réels avec la configuration autorisée.
+Les tests ordinaires exportés utilisent des modèles simulés ; `RagHSCodeServiceMT`
+nécessite `OPENAI_API_KEY`, `RUN_OPENAI_MT=true` et une sélection Maven explicite
+(`-Dtest=RagHSCodeServiceMT#searchBanana`).
