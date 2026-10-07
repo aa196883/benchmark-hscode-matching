@@ -1,5 +1,6 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.AnalyseResult;
 import com.semsoft.lestr.tradeanalysis.domain.model.SearchResult;
@@ -10,17 +11,38 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.postgresql.ds.PGSimpleDataSource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.sql.DataSource;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/** Self-contained database lifecycle; only live provider calls require OPENAI_API_KEY. */
+@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @EnabledIfEnvironmentVariable(named = "RUN_OPENAI_MT", matches = "true")
 class RagHSCodeServiceMT {
+
+    @Container
+    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
+            DockerImageName.parse("pgvector/pgvector:0.8.1-pg17").asCompatibleSubstituteFor("postgres"))
+            .withDatabaseName("trade_analysis")
+            .withUsername("rag_test_admin")
+            .withPassword("test-admin");
 
     private static final Logger log =
             LoggerFactory.getLogger(RagHSCodeServiceMT.class);
@@ -49,22 +71,78 @@ class RagHSCodeServiceMT {
             };
 
     private RagHSCodeAnalysisService ragHSCodeService;
+    private String apiKey;
 
     @BeforeAll
     void initializeService() throws Exception {
-        String apiKey = Objects.requireNonNull(System.getenv("OPENAI_API_KEY"),
-                "Set OPENAI_API_KEY before running this manual test");
-        if (apiKey.isBlank()) throw new IllegalArgumentException("OPENAI_API_KEY must not be blank");
+        // One fresh database for the entire class, never the Compose database.
+        try (var connection = datasource(POSTGRES.getUsername(), POSTGRES.getPassword()).getConnection();
+             var statement = connection.createStatement();
+             var bootstrap = Objects.requireNonNull(RagIndexImporter.class.getResourceAsStream("db/bootstrap.sql"))) {
+            statement.execute(new String(bootstrap.readAllBytes(), StandardCharsets.UTF_8));
+            // Test-only credentials, scoped to this disposable container.
+            statement.execute("ALTER ROLE rag_import PASSWORD 'test-import'; "
+                    + "ALTER ROLE rag_reader PASSWORD 'test-reader'");
+        }
+        var resources = PrecomputedIndexResources.packaged();
+        assertTrue(RagIndexImporter.importIndex(datasource("rag_import", "test-import"), resources));
+        var reader = datasource("rag_reader", "test-reader");
+        assertDatabaseMatchesVectors(reader, resources);
+
+        apiKey = System.getenv("OPENAI_API_KEY");
+        // Instantiation alone makes no API call; allow selecting it to check the full database setup offline.
+        String constructionKey = apiKey == null || apiKey.isBlank() ? "unused-for-instantiation-only" : apiKey;
         ragHSCodeService = RagHSCodeAnalysisService.construct(
-                new OpenAIProperties(apiKey), UNUSED_ANALYSIS_DELEGATE, datasource());
+                new OpenAIProperties(constructionKey), UNUSED_ANALYSIS_DELEGATE, reader);
     }
 
-    private static javax.sql.DataSource datasource() {
-        var datasource = new org.postgresql.ds.PGSimpleDataSource();
-        datasource.setUrl(Objects.requireNonNull(System.getenv("RAG_DB_URL"), "RAG_DB_URL required"));
-        datasource.setUser(Objects.requireNonNull(System.getenv("RAG_DB_USER"), "RAG_DB_USER required"));
-        datasource.setPassword(Objects.requireNonNull(System.getenv("RAG_DB_PASSWORD"), "RAG_DB_PASSWORD required"));
+    private static DataSource datasource(String user, String password) {
+        var datasource = new PGSimpleDataSource();
+        datasource.setUrl(POSTGRES.getJdbcUrl());
+        datasource.setUser(user);
+        datasource.setPassword(password);
+        datasource.setConnectTimeout(5);
+        datasource.setSocketTimeout(60);
         return datasource;
+    }
+
+    /** Compare every stored component with the raw file, independently of the importer's vector reader. */
+    private static void assertDatabaseMatchesVectors(DataSource reader, PrecomputedIndexResources resources)
+            throws Exception {
+        var json = new ObjectMapper();
+        try (var stream = Objects.requireNonNull(RagIndexImporter.class.getResourceAsStream("h6_2022/vectors.jsonl"));
+             var lines = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+             var connection = reader.getConnection()) {
+            connection.setAutoCommit(false); // Enable the JDBC cursor instead of buffering the whole index.
+            try (var statement = connection.prepareStatement(
+                    "SELECT metadata->>'code', embedding::text FROM rag.embeddings ORDER BY metadata->>'code'")) {
+                statement.setFetchSize(64);
+                try (var result = statement.executeQuery()) {
+                    int count = 0;
+                    String line;
+                    while ((line = lines.readLine()) != null) {
+                        var source = json.readTree(line);
+                        String code = source.get("code").asText();
+                        assertTrue(result.next(), "Missing database vector for " + code);
+                        assertEquals(code, result.getString(1), "Unexpected database code/order");
+                        float[] expected = json.treeToValue(source.get("vector"), float[].class);
+                        assertEquals(resources.dimensions, expected.length, "Source dimensions for " + code);
+                        // The disk format is raw; production stores L2-normalized float32 vectors.
+                        double squaredNorm = 0;
+                        for (float value : expected) squaredNorm += (double) value * value;
+                        double norm = Math.sqrt(squaredNorm);
+                        for (int i = 0; i < expected.length; i++) expected[i] = (float) (expected[i] / norm);
+                        float[] actual = json.readValue(result.getString(2), float[].class);
+                        // Numeric equality with zero tolerance: PostgreSQL can render -0.0 as 0.0.
+                        assertArrayEquals(expected, actual, 0.0f, "Stored vector differs from vectors.jsonl for " + code);
+                        count++;
+                    }
+                    assertFalse(result.next(), "Unexpected extra database vector");
+                    assertEquals(resources.size(), count, "Database/source vector count");
+                    log.info("Verified all {} vectors ({} dimensions) against vectors.jsonl", count, resources.dimensions);
+                }
+            }
+        }
     }
 
     @Test
@@ -94,6 +172,8 @@ class RagHSCodeServiceMT {
             String description,
             String expectedHSCode
     ) {
+        assertTrue(apiKey != null && !apiKey.isBlank(),
+                "Set OPENAI_API_KEY before running the live search tests");
         log.info(
                 "Searching for '{}' - expected HS code: {}",
                 description,

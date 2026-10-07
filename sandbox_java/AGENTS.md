@@ -103,6 +103,9 @@ git diff --check
 # Préparer les données si absentes/périmées, puis export (lance verify)
 ./scripts/prepare_rag_resources.sh
 ./simplified_env/export.sh -o
+# Base Docker autonome + import/comparaison exhaustive des vecteurs, sans API
+RUN_OPENAI_MT=true ./simplified_env/dev.sh test -o -pl extension -am \
+  '-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated' -Dsurefire.failIfNoSpecifiedTests=false
 # Un seul cas API payant, clé déjà chargée dans l’environnement
 RUN_OPENAI_MT=true ./simplified_env/dev.sh test -o -pl extension -am \
   '-Dtest=RagHSCodeServiceMT#searchBanana' -Dsurefire.failIfNoSpecifiedTests=false
@@ -119,6 +122,10 @@ Choisir les tests : `RagServiceTest`/`ReferenceCasesTest` pour le métier,
 `ClasspathLoadingTest`/`ResourceStreamTest` pour ressources et flux ; tests
 `*CompatibilityTest` du runner pour le socle. `RagHSCodeServiceMT` est exclu des
 sélections ordinaires et exige `RUN_OPENAI_MT=true` plus une sélection explicite.
+Il crée sa propre base Docker, importe et vérifie chaque vecteur une seule fois en
+`@BeforeAll`, puis détruit le conteneur à la fin. Aucun `RAG_DB_*` ni Compose requis.
+Seules les recherches réelles exigent `OPENAI_API_KEY` ; `serviceCanBeInstantiated`
+vérifie la préparation complète sans clé ni appel API.
 Les tests ordinaires sont sans API payante ni Docker ; certains simulent HTTP en boucle locale.
 `PgVectorIndexIT` exige Docker, crée/détruit sa propre base sans Compose, teste import/recherche/
 droits/rollback/concurrence/JAR. Le profil explicite ne doit pas ignorer un Docker indisponible.

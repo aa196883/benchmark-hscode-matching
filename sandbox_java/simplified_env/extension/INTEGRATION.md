@@ -69,6 +69,16 @@ base Docker, importe des fixtures, vérifie recherches, droits, rollback et conc
 Les tests ordinaires et PostgreSQL sont sans appels API.
 
 Valider ensuite le contexte Spring, les contrats/dépendances réels et les droits du
-compte applicatif. Pour un appel réel explicite, `RagHSCodeServiceMT#searchBanana`
-utilise `RUN_OPENAI_MT=true`, `OPENAI_API_KEY` et `RAG_DB_URL`, `RAG_DB_USER`,
-`RAG_DB_PASSWORD` sur une base déjà importée.
+compte applicatif. `RagHSCodeServiceMT` est autonome : il crée un conteneur pgvector
+neuf, prépare les rôles avec des identifiants de test, importe les ressources puis
+compare chaque code et composante de vecteur à `vectors.jsonl` (après conversion
+float32 et normalisation L2, sans tolérance). Cette préparation s’exécute une seule
+fois pour toute la classe ; le conteneur est supprimé à la fin, même en cas d’échec.
+Aucun Compose, base préexistante ni variable `RAG_DB_*` n’est nécessaire.
+
+Sélectionner explicitement `-Dtest=RagHSCodeServiceMT` avec `RUN_OPENAI_MT=true` et
+`OPENAI_API_KEY` pour les trois recherches réelles. Le moteur Docker, les dépendances
+Testcontainers et les ressources complètes sur le classpath suffisent côté base ;
+Testcontainers récupère l’image automatiquement si elle manque.
+`-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated` vérifie toute la préparation et
+l’égalité des vecteurs sans clé OpenAI ni appel payant.
