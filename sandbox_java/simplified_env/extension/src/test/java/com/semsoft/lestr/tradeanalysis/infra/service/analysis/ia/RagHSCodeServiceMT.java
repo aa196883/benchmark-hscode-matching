@@ -1,6 +1,7 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.semsoft.lestr.common.test.Utils;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.AnalyseResult;
 import com.semsoft.lestr.tradeanalysis.domain.model.SearchResult;
@@ -31,10 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/** Self-contained database lifecycle; only live provider calls require OPENAI_API_KEY. */
+/** Self-contained database lifecycle; secret loading follows the industrial manual tests. */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-@EnabledIfEnvironmentVariable(named = "RUN_OPENAI_MT", matches = "true")
 class RagHSCodeServiceMT {
 
     @Container
@@ -71,10 +71,10 @@ class RagHSCodeServiceMT {
             };
 
     private RagHSCodeAnalysisService ragHSCodeService;
-    private String apiKey;
 
     @BeforeAll
     void initializeService() throws Exception {
+        var openAIProperties = new OpenAIProperties(Objects.requireNonNull(Utils.getSecret("OPENAI-API")));
         // One fresh database for the entire class, never the Compose database.
         try (var connection = datasource(POSTGRES.getUsername(), POSTGRES.getPassword()).getConnection();
              var statement = connection.createStatement();
@@ -89,11 +89,8 @@ class RagHSCodeServiceMT {
         var reader = datasource("rag_reader", "test-reader");
         assertDatabaseMatchesVectors(reader, resources);
 
-        apiKey = System.getenv("OPENAI_API_KEY");
-        // Instantiation alone makes no API call; allow selecting it to check the full database setup offline.
-        String constructionKey = apiKey == null || apiKey.isBlank() ? "unused-for-instantiation-only" : apiKey;
         ragHSCodeService = RagHSCodeAnalysisService.construct(
-                new OpenAIProperties(constructionKey), UNUSED_ANALYSIS_DELEGATE, reader);
+                openAIProperties, UNUSED_ANALYSIS_DELEGATE, reader);
     }
 
     private static DataSource datasource(String user, String password) {
@@ -172,8 +169,6 @@ class RagHSCodeServiceMT {
             String description,
             String expectedHSCode
     ) {
-        assertTrue(apiKey != null && !apiKey.isBlank(),
-                "Set OPENAI_API_KEY before running the live search tests");
         log.info(
                 "Searching for '{}' - expected HS code: {}",
                 description,

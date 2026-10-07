@@ -76,9 +76,12 @@ float32 et normalisation L2, sans tolérance). Cette préparation s’exécute u
 fois pour toute la classe ; le conteneur est supprimé à la fin, même en cas d’échec.
 Aucun Compose, base préexistante ni variable `RAG_DB_*` n’est nécessaire.
 
-Sélectionner explicitement `-Dtest=RagHSCodeServiceMT` avec `RUN_OPENAI_MT=true` et
-`OPENAI_API_KEY` pour les trois recherches réelles. Le moteur Docker, les dépendances
+Sélectionner explicitement `-Dtest=RagHSCodeServiceMT` avec `RUN_OPENAI_MT=true`.
+Le test charge la clé comme `CompletionHSCodeServiceMT` :
+`new OpenAIProperties(Objects.requireNonNull(Utils.getSecret("OPENAI-API")))`, avec
+`com.semsoft.lestr.common.test.Utils` du projet industriel. Ne pas transférer son
+substitut local de `compat`, qui lit `OPENAI_API_KEY` uniquement dans le bac à sable. Le moteur Docker, les dépendances
 Testcontainers et les ressources complètes sur le classpath suffisent côté base ;
 Testcontainers récupère l’image automatiquement si elle manque.
 `-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated` vérifie toute la préparation et
-l’égalité des vecteurs sans clé OpenAI ni appel payant.
+l’égalité des vecteurs sans appel payant ; le secret reste requis à l’initialisation.

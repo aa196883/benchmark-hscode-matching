@@ -38,7 +38,9 @@ Aucun lint Java dédié : `git diff --check` contrôle les espaces.
 Le test manuel `RagHSCodeServiceMT` crée aussi sa propre base temporaire : import et
 comparaison exhaustive des vecteurs une fois pour toute la classe, puis recherches
 réelles. Aucun Compose ni identifiant PostgreSQL à fournir : Docker et les ressources
-complètes suffisent côté base. Pour les recherches, exporter `OPENAI_API_KEY` puis :
+complètes suffisent côté base. La clé est chargée comme dans le test industriel :
+`Utils.getSecret("OPENAI-API")`, transmis à `OpenAIProperties`. Le substitut local de
+`Utils` utilise `OPENAI_API_KEY` : l’exporter avant de lancer le test :
 
 ```bash
 RUN_OPENAI_MT=true ./simplified_env/dev.sh test -pl extension -am \
@@ -46,7 +48,8 @@ RUN_OPENAI_MT=true ./simplified_env/dev.sh test -pl extension -am \
 ```
 
 Sélectionner `RagHSCodeServiceMT#serviceCanBeInstantiated` pour vérifier seulement
-l’import et les vecteurs, sans clé OpenAI. La comparaison est exacte après la
+l’import et les vecteurs sans appel API ; le secret reste requis à l’initialisation.
+La comparaison est exacte après la
 conversion float32 et la normalisation L2 appliquées par l’import.
 
 ## Base locale : préparer, importer, lire

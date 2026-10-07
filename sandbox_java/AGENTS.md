@@ -103,7 +103,7 @@ git diff --check
 # Préparer les données si absentes/périmées, puis export (lance verify)
 ./scripts/prepare_rag_resources.sh
 ./simplified_env/export.sh -o
-# Base Docker autonome + import/comparaison exhaustive des vecteurs, sans API
+# Base Docker autonome + comparaison exhaustive, sans appel API (secret requis)
 RUN_OPENAI_MT=true ./simplified_env/dev.sh test -o -pl extension -am \
   '-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated' -Dsurefire.failIfNoSpecifiedTests=false
 # Un seul cas API payant, clé déjà chargée dans l’environnement
@@ -124,8 +124,11 @@ Choisir les tests : `RagServiceTest`/`ReferenceCasesTest` pour le métier,
 sélections ordinaires et exige `RUN_OPENAI_MT=true` plus une sélection explicite.
 Il crée sa propre base Docker, importe et vérifie chaque vecteur une seule fois en
 `@BeforeAll`, puis détruit le conteneur à la fin. Aucun `RAG_DB_*` ni Compose requis.
-Seules les recherches réelles exigent `OPENAI_API_KEY` ; `serviceCanBeInstantiated`
-vérifie la préparation complète sans clé ni appel API.
+Le test charge `new OpenAIProperties(Objects.requireNonNull(Utils.getSecret("OPENAI-API")))`,
+comme le test industriel de completion, sans clé de secours. `serviceCanBeInstantiated`
+nécessite aussi ce secret, mais ne fait aucun appel API. Le substitut local
+`compat/.../com/semsoft/lestr/common/test/Utils.java` lit `OPENAI_API_KEY` uniquement
+pour le bac à sable ; ne jamais l’exporter ni remplacer le Utils industriel.
 Les tests ordinaires sont sans API payante ni Docker ; certains simulent HTTP en boucle locale.
 `PgVectorIndexIT` exige Docker, crée/détruit sa propre base sans Compose, teste import/recherche/
 droits/rollback/concurrence/JAR. Le profil explicite ne doit pas ignorer un Docker indisponible.
