@@ -10,7 +10,7 @@ complète reste à valider.
 
 Commandes depuis **`sandbox_java/`**. Prérequis : JDK 21, Maven 3.9+, Bash ;
 Docker pour les tests PostgreSQL, Compose pour la base persistante. Importer
-`simplified_env/pom.xml` dans l’IDE avec Lombok activé. Pas de Spring local.
+`simplified_env/pom.xml` dans l’IDE avec Lombok activé. Pas de contexte Spring local (Spring Core sert au chargement des ressources industrielles).
 
 - `extension/` : code RAG, importeur, ressources et tests transférables.
 - `compat/` : copies des contrats industriels à préserver.
@@ -60,7 +60,7 @@ modifie rien, un index différent est refusé. Aucun remplissage automatique au 
 
 Les ressources réelles sont déjà présentes localement. Sur un checkout neuf,
 `./scripts/prepare_rag_resources.sh` copie les données existantes du parent
-(`data/processed/h6_2022`, `artifacts/embeddings/h6_2022`) sans appel API.
+(`artifacts/embeddings/h6_2022` : manifeste et vecteurs) sans appel API.
 Ces copies, ignorées par Git, doivent être préparées avant packaging et export.
 
 ```bash
@@ -81,7 +81,9 @@ conserve ses mots de passe : modifier `.env` seul ne les change pas en base.
 
 La CLI lit `RAG_IMPORT_DB_{URL,USER,PASSWORD}` pour l’import et
 `RAG_DB_{URL,USER,PASSWORD}` pour la recherche. Elle ne charge aucun `.env`.
-Le service vérifie catalogue, manifeste, dimensions et codes en base, sans relire
+Les descriptions proviennent du service industriel `HSCodeServiceImpl` (HS 2022),
+injecté via `HSCodeService`.
+Le service vérifie descriptions, manifeste, dimensions et codes en base, sans relire
 le fichier de vecteurs. Une base absente/incompatible provoque une erreur explicite.
 
 ```bash
@@ -114,6 +116,6 @@ ni `runner`, ni leurs JAR/POM.**
 
 Le module cible doit préparer sa base, lancer l’import avec son compte dédié, puis
 injecter sa `DataSource` de lecture dans
-`RagHSCodeAnalysisService.construct(openAIProperties, analysisDelegate, datasource)`.
+`RagHSCodeAnalysisService.construct(openAIProperties, analysisDelegate, datasource, hsCodeService)`.
 Le service ne possède pas le pool de connexions. Valider câblage Spring, ressources,
 dépendances et secours : exception → service suivant ; résultat vide → arrêt de la chaîne.

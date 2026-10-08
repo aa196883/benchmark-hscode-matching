@@ -1,6 +1,9 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.semsoft.lestr.tradeanalysis.infra.service.HSCodeServiceImpl;
+import com.semsoft.lestr.tradeanalysis.domain.model.HSNomenclature;
+import com.semsoft.lestr.tradeanalysis.domain.model.HSVersion;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,7 +47,7 @@ class PgVectorIndexIT {
         RagTestSupport.fixtures(directory);
     }
     private PrecomputedIndexResources resources() throws IOException {
-        return new PrecomputedIndexResources(directory, new RagCatalog(directory.resolve("catalog.jsonl")));
+        return new PrecomputedIndexResources(directory, RagTestSupport.hsCodeService());
     }
     private static PGSimpleDataSource datasource(String user, String password) {
         var source = new PGSimpleDataSource();
@@ -63,7 +66,7 @@ class PgVectorIndexIT {
              var result = statement.executeQuery(sql)) { result.next(); return result.getString(1); }
     }
     private static List<String> codes(PrecomputedEmbeddingIndex index, double[] query, int k) {
-        return index.search(query, k).stream().map(RagCatalog.Row::code).toList();
+        return index.search(query, k).stream().map(row -> row.hsCode().toDigits()).toList();
     }
 
     @Test void importsReopensAndRunsRagWithReadOnlyRole() throws Exception {
@@ -92,7 +95,7 @@ class PgVectorIndexIT {
         var readOnlyResources = new PrecomputedIndexResources(name -> {
             assertEquals("manifest.json", name);
             return Files.newInputStream(directory.resolve(name));
-        }, resources.catalog);
+        }, RagTestSupport.hsCodeService());
         assertEquals(codes(index, new double[]{1, 0}, 2),
                 codes(new PrecomputedEmbeddingIndex(reader(), readOnlyResources), new double[]{1, 0}, 2));
     }
@@ -126,23 +129,26 @@ class PgVectorIndexIT {
 
     @Test void invalidImportRollsBackAndCanBeRetried() throws Exception {
         // More than one batch: rows have reached PostgreSQL before the final checksum fails.
-        var catalog = new StringBuilder(); var vectors = new StringBuilder();
+        var hierarchy = new HSNomenclature();
+        hierarchy.addChapter("01", HSVersion.V_2022, "Animals");
+        var vectors = new StringBuilder();
+        var texts = new ArrayList<List<String>>();
         for (int i = 1; i <= 300; i++) {
-            String code = String.format(java.util.Locale.ROOT, "%06d", i);
-            catalog.append(encode(Map.of("code", code, "description", "Candidate " + code,
-                    "contextual_description", "Context " + code, "edition", "2022", "language", "en",
-                    "level", 6, "is_candidate", true))).append('\n');
+            String code = String.format(java.util.Locale.ROOT, "01%04d", i);
+            String heading = code.substring(0, 4);
+            if (hierarchy.getHeading(heading).isEmpty()) hierarchy.addHeading(heading, HSVersion.V_2022, "Heading " + heading);
+            hierarchy.addSubHeading(code, HSVersion.V_2022, "Candidate " + code);
+            texts.add(List.of(code, "Animals > Heading " + heading + " > Candidate " + code));
             vectors.append(encode(Map.of("code", code, "vector", List.of(1, 0)))).append('\n');
         }
-        Files.writeString(directory.resolve("catalog.jsonl"), catalog);
         Files.writeString(directory.resolve("vectors.jsonl"), vectors);
         var manifest = (ObjectNode) parse(Files.readString(directory.resolve("manifest.json")));
         manifest.put("count", 300);
-        ((ObjectNode) manifest.get("source")).put("descriptions_sha256",
-                new RagCatalog(directory.resolve("catalog.jsonl")).descriptionsSha256());
+        ((ObjectNode) manifest.get("source")).put("descriptions_sha256", sha(encode(texts).getBytes(StandardCharsets.UTF_8)));
         // Keep the original, now invalid vectors checksum.
         Files.writeString(directory.resolve("manifest.json"), encode(manifest));
-        var failure = assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
+        var resources = new PrecomputedIndexResources(directory, RagTestSupport.hsCodeService(hierarchy));
+        var failure = assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources));
         assertTrue(failure.getMessage().contains("checksum"));
         assertNull(scalar("SELECT to_regclass('rag.embeddings')::text"));
         assertNull(scalar("SELECT to_regclass('rag.index_manifest')::text"));
@@ -200,13 +206,13 @@ class PgVectorIndexIT {
     @Test void importsFromJarStreams() throws Exception {
         Path jar = directory.resolve("index.jar");
         try (var output = new JarOutputStream(Files.newOutputStream(jar))) {
-            for (String name : List.of("catalog.jsonl", "manifest.json", "vectors.jsonl")) {
+            for (String name : List.of("manifest.json", "vectors.jsonl")) {
                 output.putNextEntry(new JarEntry(name)); output.write(Files.readAllBytes(directory.resolve(name))); output.closeEntry();
             }
         }
         try (var source = new JarFile(jar.toFile())) {
             PrecomputedIndexResources.ResourceOpener opener = name -> source.getInputStream(source.getJarEntry(name));
-            var resources = new PrecomputedIndexResources(opener, new RagCatalog(opener.open("catalog.jsonl")));
+            var resources = new PrecomputedIndexResources(opener, RagTestSupport.hsCodeService());
             assertTrue(RagIndexImporter.importIndex(importer(), resources));
             assertEquals(List.of("010121"), codes(new PrecomputedEmbeddingIndex(reader(), resources), new double[]{1, 0}, 1));
         }
@@ -214,11 +220,11 @@ class PgVectorIndexIT {
 
     @Test @EnabledIfSystemProperty(named = "rag.fullIndex", matches = "true")
     void importsFullIndexAndMatchesJavaReference() throws Exception {
-        var resources = PrecomputedIndexResources.packaged();
+        var resources = PrecomputedIndexResources.packaged(new HSCodeServiceImpl());
         assertEquals(5612, resources.size()); assertEquals(1536, resources.dimensions);
         long start = System.nanoTime();
         assertTrue(RagIndexImporter.importIndex(importer(), resources));
-        var index = RagHSCodeAnalysisService.loadIndex(reader());
+        var index = RagHSCodeAnalysisService.loadIndex(reader(), new HSCodeServiceImpl());
         var reference = RagTestSupport.index(resources);
         var queries = new ArrayList<double[]>(); int[] position = {0};
         var positions = Set.of(0, resources.size() / 3, 2 * resources.size() / 3, resources.size() - 1);

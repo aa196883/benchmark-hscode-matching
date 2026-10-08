@@ -1,6 +1,7 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import org.junit.jupiter.api.Test;
+import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeService;
 import org.junit.jupiter.api.io.TempDir;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
@@ -19,8 +20,8 @@ class ClasspathLoadingTest {
     @Test void importReadsResourcesFromJarWithoutFilesystemPaths() throws Exception {
         try (var loader = loader(null, false)) {
             Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
-            assertEquals("jar", type.getResource("h6_2022/catalog.jsonl").getProtocol());
-            Object resources = type.getMethod("packaged").invoke(null);
+            assertEquals("jar", type.getResource("h6_2022/manifest.json").getProtocol());
+            Object resources = type.getMethod("packaged", HSCodeService.class).invoke(null, RagTestSupport.hsCodeService());
             assertEquals(3, type.getMethod("size").invoke(resources));
             readVectors(type, resources);
         }
@@ -28,18 +29,17 @@ class ClasspathLoadingTest {
     @Test void runtimeResourcesDoNotRequireVectors() throws Exception {
         try (var loader = loader("vectors.jsonl", false)) {
             Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
-            Object resources = type.getMethod("packaged").invoke(null);
+            Object resources = type.getMethod("packaged", HSCodeService.class).invoke(null, RagTestSupport.hsCodeService());
             assertEquals(3, type.getMethod("size").invoke(resources));
             var error = assertThrows(InvocationTargetException.class, () -> readVectors(type, resources));
             assertInstanceOf(FileNotFoundException.class, error.getCause());
         }
     }
-    @Test void missingCatalogueNamesTheClasspathResource() throws Exception { missing("catalog.jsonl"); }
     @Test void missingManifestNamesTheClasspathResource() throws Exception { missing("manifest.json"); }
     @Test void corruptPackagedIndexIsRejectedDuringImportValidation() throws Exception {
         try (var loader = loader(null, true)) {
             Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
-            Object resources = type.getMethod("packaged").invoke(null);
+            Object resources = type.getMethod("packaged", HSCodeService.class).invoke(null, RagTestSupport.hsCodeService());
             var error = assertThrows(InvocationTargetException.class, () -> readVectors(type, resources));
             assertInstanceOf(IllegalArgumentException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains("checksum"));
@@ -56,7 +56,7 @@ class ClasspathLoadingTest {
     private void missing(String name) throws Exception {
         try (var loader = loader(name, false)) {
             Class<?> type = loader.loadClass(PACKAGE + ".PrecomputedIndexResources");
-            var error = assertThrows(InvocationTargetException.class, () -> type.getMethod("packaged").invoke(null));
+            var error = assertThrows(InvocationTargetException.class, () -> type.getMethod("packaged", HSCodeService.class).invoke(null, RagTestSupport.hsCodeService()));
             assertInstanceOf(FileNotFoundException.class, error.getCause());
             assertTrue(error.getCause().getMessage().contains(name));
         }
@@ -74,7 +74,7 @@ class ClasspathLoadingTest {
                     entry(output, PREFIX + name, Objects.requireNonNull(stream).readAllBytes());
                 }
             }
-            for (String name : List.of("catalog.jsonl", "manifest.json", "vectors.jsonl")) {
+            for (String name : List.of("manifest.json", "vectors.jsonl")) {
                 if (name.equals(excluded)) continue;
                 try (var stream = getClass().getResourceAsStream("/rag-fixtures/" + name)) {
                     byte[] bytes = Objects.requireNonNull(stream).readAllBytes();

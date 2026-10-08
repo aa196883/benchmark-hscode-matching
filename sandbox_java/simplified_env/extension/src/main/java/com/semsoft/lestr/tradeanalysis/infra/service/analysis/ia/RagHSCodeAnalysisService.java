@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.*;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
 import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
+import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeService;
 import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import java.io.*;
 import javax.sql.DataSource;
@@ -37,16 +38,16 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         require(Objects.equals(index.configuredDimensions(), embeddings.dimensions()), "Query vectorizer config must match the index");
     }
     public static RagHSCodeAnalysisService construct(OpenAIProperties properties,
-                                                     HSCodeAnalysisService analysisDelegate, DataSource datasource) throws IOException, SQLException {
-        var index = loadIndex(datasource);
+                                                     HSCodeAnalysisService analysisDelegate, DataSource datasource, HSCodeService hsCodeService) throws IOException, SQLException {
+        var index = loadIndex(datasource, hsCodeService);
         var defaults = OpenAiRagClient.Config.defaults();
         var config = new OpenAiRagClient.Config(properties.modelName(), defaults.maxOutputTokens(), null, null);
         var client = new OpenAiRagClient(properties.apiKey(), index.configuredDimensions(), config);
         return new RagHSCodeAnalysisService(index, client, client, analysisDelegate, DEFAULT_RETRIEVAL_K);
     }
-    /** Checks the database against packaged catalogue/manifest; does not read or import vectors. */
-    public static PrecomputedEmbeddingIndex loadIndex(DataSource datasource) throws IOException, SQLException {
-        return new PrecomputedEmbeddingIndex(datasource, PrecomputedIndexResources.packaged());
+    /** Checks the database against HS service descriptions and packaged manifest; does not read or import vectors. */
+    public static PrecomputedEmbeddingIndex loadIndex(DataSource datasource, HSCodeService hsCodeService) throws IOException, SQLException {
+        return new PrecomputedEmbeddingIndex(datasource, PrecomputedIndexResources.packaged(hsCodeService));
     }
     @Override public SearchResult searchFromDescription(String description) {
         return toSearchResult(searchDetailed(description));
@@ -68,15 +69,15 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         var hits = index.search(embeddings.embed(description), retrievalK);
         if (hits.isEmpty()) return new RagResult("abstained", List.of(), List.of());
 
-        var allowed = new TreeSet<String>();
-        for (var hit : hits) allowed.add(hit.code());
+        var allowed = new TreeMap<String, HSCodeWithDescription>();
+        for (var hit : hits) allowed.put(hit.hsCode().toDigits(), hit);
         var schema = SCHEMA.deepCopy();
         ((ObjectNode) schema.path("properties").path("candidates").path("items").path("properties").path("code"))
-                .set("enum", MAPPER.valueToTree(allowed));
+                .set("enum", MAPPER.valueToTree(allowed.keySet()));
         var input = MAPPER.createObjectNode().put("product_description", description);
         var provided = input.putArray("candidates");
-        for (var hit : hits) provided.addObject().put("code", hit.code()).put("description", hit.description())
-                .put("contextual_description", hit.contextualDescription());
+        for (var hit : hits) provided.addObject().put("code", hit.hsCode().toDigits()).put("description", hit.description())
+                .put("contextual_description", index.contextualDescription(hit));
         String instructions = PROMPT.replace("{top_k}", Integer.toString(topK));
         Answer answer = parseAnswer(generation.generate(instructions, encode(input), schema));
 
@@ -84,9 +85,9 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         var seen = new HashSet<String>();
         for (int i = 0; i < Math.min(topK, answer.candidates().size()); i++) {
             var item = answer.candidates().get(i);
-            if (allowed.contains(item.code()) && seen.add(item.code())) {
+            if (allowed.containsKey(item.code()) && seen.add(item.code())) {
                 candidates.add(new RagResult.Candidate(item.code(), i + 1,
-                        index.catalog().row(item.code()).description(), RagResult.DEFAULT_SCORE, item.explanation()));
+                        allowed.get(item.code()).description(), RagResult.DEFAULT_SCORE, item.explanation()));
             }
         }
         if (!answer.candidates().isEmpty() && candidates.isEmpty())

@@ -16,7 +16,7 @@ class IndexValidationTest {
         var index = RagTestSupport.index(directory);
         assertEquals(3, index.size()); assertEquals(2, index.dimensions());
         assertNull(index.configuredDimensions());
-        assertEquals(List.of("010121", "010129", "010130"), index.search(new double[]{1,0}, 20).stream().map(RagCatalog.Row::code).toList());
+        assertEquals(List.of("010121", "010129", "010130"), index.search(new double[]{1,0}, 20).stream().map(candidate -> candidate.hsCode().toDigits()).toList());
         assertArrayEquals(before, Files.readAllBytes(directory.resolve("vectors.jsonl")));
         assertThrows(IllegalArgumentException.class, () -> index.search(new double[]{1}, 2));
         assertThrows(IllegalArgumentException.class, () -> index.search(new double[]{0,0}, 2));
@@ -26,15 +26,21 @@ class IndexValidationTest {
     @Test void includesNegativeCosineMatchesAndIgnoresQueryMagnitude() throws Exception {
         var index = RagTestSupport.index(directory);
         var expected = List.of("010130", "010129", "010121");
-        assertEquals(expected, index.search(new double[]{-1,0}, 3).stream().map(RagCatalog.Row::code).toList());
-        assertEquals(expected, index.search(new double[]{-100,0}, 3).stream().map(RagCatalog.Row::code).toList());
+        assertEquals(expected, index.search(new double[]{-1,0}, 3).stream().map(candidate -> candidate.hsCode().toDigits()).toList());
+        assertEquals(expected, index.search(new double[]{-100,0}, 3).stream().map(candidate -> candidate.hsCode().toDigits()).toList());
     }
-    @Test void rejectsCatalogueChangesButAcceptsFormattingChanges() throws Exception {
-        var path = directory.resolve("catalog.jsonl");
-        Files.writeString(path, "  "+Files.readString(path)+"  ");
-        assertEquals(3, RagTestSupport.index(directory).size());
-        Files.writeString(path, Files.readString(path).replace("Animals >", "Different >"));
-        assertThrows(IllegalArgumentException.class, () -> RagTestSupport.index(directory));
+    @Test void rejectsChangedHierarchyAndIgnoresOlderOrSpecialCodes() throws Exception {
+        var hsCodeService = RagTestSupport.hsCodeService();
+        var resources = new PrecomputedIndexResources(directory, hsCodeService);
+        assertEquals(List.of("010121", "010129", "010130"),
+                resources.rows.stream().map(candidate -> candidate.hsCode().toDigits()).toList());
+        assertEquals("Animals > Horses > Breeding horses", resources.contextualDescription(resources.rows.getFirst()));
+        var hierarchy = hsCodeService.getHSNomenclature();
+        hierarchy.getHeading("0101").orElseThrow().updateWithVersion(
+                com.semsoft.lestr.tradeanalysis.domain.model.HSVersion.V_2017, "old description");
+        assertEquals(3, new PrecomputedIndexResources(directory, hsCodeService).size());
+        hierarchy.addSubHeading("010121", com.semsoft.lestr.tradeanalysis.domain.model.HSVersion.V_2022, "Changed horses");
+        assertThrows(IllegalArgumentException.class, () -> new PrecomputedIndexResources(directory, hsCodeService));
     }
     @Test void rejectsTamperingTruncationOrderAndDuplicates() throws Exception {
         var path = directory.resolve("vectors.jsonl"); var lines = Files.readAllLines(path);
@@ -74,15 +80,16 @@ class IndexValidationTest {
         var row = (ObjectNode) parse(lines.get(1)); row.set("vector", parse("[1,0]")); lines.set(1, encode(row));
         Files.write(path, lines); updateChecksum();
         var index = RagTestSupport.index(directory);
-        assertEquals("010121", index.search(new double[]{1,0},1).getFirst().code());
-        assertEquals(List.of("010121", "010129"), index.search(new double[]{1,0},2).stream().map(RagCatalog.Row::code).toList());
+        assertEquals("010121", index.search(new double[]{1,0},1).getFirst().hsCode().toDigits());
+        assertEquals(List.of("010121", "010129"), index.search(new double[]{1,0},2).stream().map(candidate -> candidate.hsCode().toDigits()).toList());
     }
-    @Test void rejectsEmptyCatalogueDuplicateCodesWrongLanguageAndMissingContext() throws Exception {
-        var path = directory.resolve("catalog.jsonl"); String original = Files.readString(path);
-        for (String content : List.of("", original + original, original.replace("\"en\"", "\"fr\""), original.replace("contextual_description", "unused"))) {
-            Files.writeString(path, content);
-            assertThrows(IllegalArgumentException.class, () -> RagTestSupport.index(directory));
-        }
+    @Test void rejectsEmptyServiceAndBlankDescriptions() throws Exception {
+        var empty = RagTestSupport.hsCodeService(new com.semsoft.lestr.tradeanalysis.domain.model.HSNomenclature());
+        assertThrows(IllegalArgumentException.class, () -> new PrecomputedIndexResources(directory, empty));
+        var hsCodeService = RagTestSupport.hsCodeService();
+        hsCodeService.getHSNomenclature().addSubHeading("010121",
+                com.semsoft.lestr.tradeanalysis.domain.model.HSVersion.V_2022, " ");
+        assertThrows(IllegalArgumentException.class, () -> new PrecomputedIndexResources(directory, hsCodeService));
     }
     private void updateChecksum() throws Exception {
         var path = directory.resolve("manifest.json"); var manifest = (ObjectNode) parse(Files.readString(path));

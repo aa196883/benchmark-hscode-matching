@@ -1,6 +1,7 @@
 package local.lestr.sandbox;
 
 import com.fasterxml.jackson.databind.*;
+import com.semsoft.lestr.tradeanalysis.infra.service.HSCodeServiceImpl;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
@@ -29,9 +30,10 @@ final class RagMain {
         return value;
     }
     static int run(String[] args) throws Exception {
+        var hsCodeService = new HSCodeServiceImpl();
         if (args[0].equals("rag-import")) {
             if (args.length != 1) throw new IllegalArgumentException("rag-import takes no arguments");
-            boolean imported = RagIndexImporter.importIndex(datasource(true), PrecomputedIndexResources.packaged());
+            boolean imported = RagIndexImporter.importIndex(datasource(true), PrecomputedIndexResources.packaged(hsCodeService));
             System.out.println(imported ? "RAG index imported" : "RAG index already imported and verified");
             return 0;
         }
@@ -41,7 +43,7 @@ final class RagMain {
             throw new IllegalArgumentException("Use --help for RAG arguments");
         int topK = args.length > descriptionPosition + 1 ? Integer.parseInt(args[descriptionPosition + 1]) : 5;
         int retrievalK = args.length > descriptionPosition + 2 ? Integer.parseInt(args[descriptionPosition + 2]) : 20;
-        var index = RagHSCodeAnalysisService.loadIndex(datasource(false));
+        var index = RagHSCodeAnalysisService.loadIndex(datasource(false), hsCodeService);
         RagEmbeddingClient embeddings;
         RagGenerationClient generation;
         HSCodeAnalysisService analysisDelegate;
@@ -70,11 +72,7 @@ final class RagMain {
             if (key == null || key.isBlank()) throw new IllegalArgumentException("OPENAI_API_KEY required for rag");
             var client = new OpenAiRagClient(key, index.configuredDimensions(), OpenAiRagClient.Config.defaults());
             embeddings = client; generation = client;
-            // The delegated completion only uses this catalogue to validate generated codes.
-            var localCatalog = new InMemoryHSCodeService(HSVersion.V_2022, index.catalog().candidates().stream()
-                    .map(row -> new HSCodeWithDescription(
-                            HSCode.hsCode(row.code()), row.description())).toList());
-            analysisDelegate = CompletionHSCodeChatServiceImpl.construct(new OpenAIProperties(key), localCatalog, HSVersion.V_2022);
+            analysisDelegate = CompletionHSCodeChatServiceImpl.construct(new OpenAIProperties(key), hsCodeService, HSVersion.V_2022);
         }
         var service = new RagHSCodeAnalysisService(index, embeddings, generation, analysisDelegate, retrievalK);
         var prediction = service.searchDetailed(args[descriptionPosition], topK);

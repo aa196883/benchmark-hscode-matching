@@ -1,5 +1,6 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
+import com.semsoft.lestr.tradeanalysis.domain.model.HSCodeWithDescription;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.store.embedding.*;
@@ -12,7 +13,7 @@ import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.
 /** Read-only PostgreSQL index. Opening never imports vectors or creates database objects. */
 public final class PrecomputedEmbeddingIndex {
     public static final String MODEL = PrecomputedIndexResources.MODEL;
-    private final RagCatalog catalog;
+    private final PrecomputedIndexResources resources;
     private final EmbeddingStore<TextSegment> store;
     private final int dimensions;
     private final Integer configuredDimensions;
@@ -23,7 +24,7 @@ public final class PrecomputedEmbeddingIndex {
     }
     // Test seam: production always opens PgVectorEmbeddingStore through the public constructor.
     PrecomputedEmbeddingIndex(PrecomputedIndexResources resources, EmbeddingStore<TextSegment> store) {
-        this.catalog = resources.catalog;
+        this.resources = resources;
         this.dimensions = resources.dimensions;
         this.configuredDimensions = resources.configuredDimensions;
         this.size = resources.size();
@@ -39,7 +40,7 @@ public final class PrecomputedEmbeddingIndex {
                 .createTable(false).dropTableFirst(false).useIndex(false)
                 .skipCreateVectorExtension(true).build();
     }
-    public List<RagCatalog.Row> search(double[] vector, int topK) {
+    public List<HSCodeWithDescription> search(double[] vector, int topK) {
         require(topK > 0, "topK must be positive");
         double norm = PrecomputedIndexResources.validate(vector, dimensions);
         float[] query = new float[dimensions];
@@ -59,8 +60,8 @@ public final class PrecomputedEmbeddingIndex {
             limit = Math.min(size, limit * 2);
         }
         return matches.stream().limit(wanted).map(match -> {
-            var row = catalog.row(code(match.embedded()));
-            require(row != null && row.eligible(), "Unknown database candidate");
+            var row = resources.row(code(match.embedded()));
+            require(row != null, "Unknown database candidate");
             return row;
         }).toList();
     }
@@ -72,6 +73,6 @@ public final class PrecomputedEmbeddingIndex {
     }
     public int dimensions() { return dimensions; }
     public Integer configuredDimensions() { return configuredDimensions; }
-    public RagCatalog catalog() { return catalog; }
+    public String contextualDescription(HSCodeWithDescription candidate) { return resources.contextualDescription(candidate); }
     public int size() { return size; }
 }

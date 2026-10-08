@@ -25,11 +25,10 @@ def envelope(codes=(), status='ok', missing=(), explanation='Supported by suppli
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    rows = [{'code': c, 'description': text, 'contextual_description': 'Animals > ' + text,
+    rows = [{'code': c, 'description': text, 'contextual_description': 'Animals > Horses > ' + text,
              'edition': '2022', 'language': 'en', 'level': 6, 'is_candidate': True}
             for c, text in [('010121', 'Breeding horses'), ('010129', 'Other horses'), ('010130', 'Asses')]]
     catalog_rows = rows + [dict(rows[0], code='990000', is_special=True), dict(rows[0], code='01', level=2, is_candidate=False)]
-    (OUT / 'catalog.jsonl').write_text('\n'.join(json.dumps(r, ensure_ascii=False, indent=2) for r in catalog_rows)+'\n')
     vectorizer = Mock()
     vectorizer.provider = 'openai'
     vectorizer.config = EmbeddingConfig(MODEL)
@@ -46,43 +45,47 @@ def main():
         (OUT/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
         (OUT/'vectors.jsonl').write_bytes((index_path/'vectors.jsonl').read_bytes())
     vectorizer.embed.return_value = EmbeddingBatch([[1., 0.]], MODEL, {'total_tokens': 2})
-    catalog = Catalog(OUT/'catalog.jsonl')
-    index = EmbeddingIndex(OUT, catalog)
-    retriever = EmbeddingRetriever(index, vectorizer)
-    cases = []
-    def add(name, raw, top_k=2, retrieval_k=2, query='Live horses'):
-        provider = Mock(); provider.name = 'openai'; provider.generate.return_value = raw
-        vectorizer.embed.reset_mock()
-        result = RAG(provider, ModelConfig(model='test-llm'), retriever, retrieval_k).predict(query, top_k, PredictionContext(catalog))
-        expected = result.to_dict()
-        prompt = expected.pop('metadata')['prompt']
-        fails = expected.pop('error') is not None
-        for candidate in expected['candidates']:
-            candidate.pop('references', None)
-            candidate.pop('score_type', None)
-            candidate['score'] = 2.5  # Java business display score, independent of the reference score.
-        cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query,
-                          top_k=top_k, retrieval_k=retrieval_k, prompt=prompt, fails=fails,
-                          embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=None if fails else expected))
-    add('llm_order', envelope(['010129', '010121']))
-    add('null_explanation', envelope(['010121'], explanation=None))
-    add('needs_info_with_candidates', envelope(['010129'], 'needs_info', ['Intended use?']))
-    add('needs_info_without_candidates', envelope([], 'needs_info', ['Intended use?']))
-    add('abstained', envelope([], 'abstained'))
-    add('abstained_with_questions', envelope([], 'abstained', ['Use?']))
-    add('outside_retrieval_preserves_rank', envelope(['010130', '010121']))
-    add('all_outside_retrieval', envelope(['010130']))
-    add('duplicates_and_excess', envelope(['010121', '010121', '010129']))
-    add('no_backfill_after_rejection', envelope(['bad', '010121', '010129']))
-    add('unknown_code', envelope(['888888', '010121']))
-    add('ineligible_code', envelope(['990000', '010121']))
-    add('invalid_short_code', envelope(['01', '010121']))
-    add('all_rejected_needs_info', envelope(['010130'], 'needs_info', ['Use?']))
-    add('k_larger_than_catalogue', envelope(['010130']), retrieval_k=20)
-    (OUT/'cases.json').write_text(json.dumps(cases, indent=2, ensure_ascii=False)+'\n')
-    (OUT/'query.json').write_text('[1.0,0.0]\n')
-    (OUT/'response.json').write_text(json.dumps(json.loads(envelope(['010129', '010121'])['output'][0]['content'][0]['text']),indent=2)+'\n')
-    print(f'{len(cases)} reference cases written to {OUT}')
+    # Only the Python reference needs a JSONL catalogue; Java uses HSCodeService.
+    with tempfile.TemporaryDirectory() as directory:
+        catalog_path = Path(directory) / 'catalog.jsonl'
+        catalog_path.write_text('\n'.join(json.dumps(r, ensure_ascii=False) for r in catalog_rows)+'\n')
+        catalog = Catalog(catalog_path)
+        index = EmbeddingIndex(OUT, catalog)
+        retriever = EmbeddingRetriever(index, vectorizer)
+        cases = []
+        def add(name, raw, top_k=2, retrieval_k=2, query='Live horses'):
+            provider = Mock(); provider.name = 'openai'; provider.generate.return_value = raw
+            vectorizer.embed.reset_mock()
+            result = RAG(provider, ModelConfig(model='test-llm'), retriever, retrieval_k).predict(query, top_k, PredictionContext(catalog))
+            expected = result.to_dict()
+            prompt = expected.pop('metadata')['prompt']
+            fails = expected.pop('error') is not None
+            for candidate in expected['candidates']:
+                candidate.pop('references', None)
+                candidate.pop('score_type', None)
+                candidate['score'] = 2.5  # Java business display score, independent of the reference score.
+            cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query,
+                              top_k=top_k, retrieval_k=retrieval_k, prompt=prompt, fails=fails,
+                              embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=None if fails else expected))
+        add('llm_order', envelope(['010129', '010121']))
+        add('null_explanation', envelope(['010121'], explanation=None))
+        add('needs_info_with_candidates', envelope(['010129'], 'needs_info', ['Intended use?']))
+        add('needs_info_without_candidates', envelope([], 'needs_info', ['Intended use?']))
+        add('abstained', envelope([], 'abstained'))
+        add('abstained_with_questions', envelope([], 'abstained', ['Use?']))
+        add('outside_retrieval_preserves_rank', envelope(['010130', '010121']))
+        add('all_outside_retrieval', envelope(['010130']))
+        add('duplicates_and_excess', envelope(['010121', '010121', '010129']))
+        add('no_backfill_after_rejection', envelope(['bad', '010121', '010129']))
+        add('unknown_code', envelope(['888888', '010121']))
+        add('ineligible_code', envelope(['990000', '010121']))
+        add('invalid_short_code', envelope(['01', '010121']))
+        add('all_rejected_needs_info', envelope(['010130'], 'needs_info', ['Use?']))
+        add('k_larger_than_catalogue', envelope(['010130']), retrieval_k=20)
+        (OUT/'cases.json').write_text(json.dumps(cases, indent=2, ensure_ascii=False)+'\n')
+        (OUT/'query.json').write_text('[1.0,0.0]\n')
+        (OUT/'response.json').write_text(json.dumps(json.loads(envelope(['010129', '010121'])['output'][0]['content'][0]['text']),indent=2)+'\n')
+        print(f'{len(cases)} reference cases written to {OUT}')
 
 if __name__ == '__main__':
     main()

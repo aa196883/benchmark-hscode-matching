@@ -14,9 +14,21 @@ Les tests locaux utilisent PostgreSQL 17 / pgvector 0.8.1.
 
 Sous `src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`,
 conserver sans filtrage `rag_v1.txt`, `rag_v1.schema.json`,
-`h6_2022/{catalog.jsonl,manifest.json,vectors.jsonl}` et `db/bootstrap.sql`.
-Les vecteurs servent uniquement à l’import ; catalogue/manifeste restent nécessaires
-au démarrage du service. Toutes ces ressources sont lisibles depuis un JAR.
+`h6_2022/{manifest.json,vectors.jsonl}` et `db/bootstrap.sql`.
+Les vecteurs servent uniquement à l’import ; le manifeste reste nécessaire au démarrage.
+Les descriptions viennent du `HSCodeService` industriel : injecter son instance
+`HSCodeServiceImpl` existante, également utilisée pour l’import. Son chargement exige
+`com/semsoft/lestr/tradeanalysis/infra/service/hs_references/{H5.json,H6.json,conversionHS2022-HS2017.csv}`
+sur le classpath, ainsi que ses dépendances habituelles (Spring Core, Guava, Jakarta JSON
+et un fournisseur JSON-P). Ces ressources/classes existent dans le projet industriel ;
+ne pas les dupliquer dans le module RAG. Le bac à sable les fournit via `compat`.
+Toutes ces ressources sont lisibles depuis un JAR.
+
+Seuls les codes à six chiffres de HS 2022, hors chapitres 98/99, sont candidats.
+Le contexte assemble chapitre, position et sous-position. La normalisation des espaces
+extérieurs et des guillemets conserve exactement les textes des embeddings existants :
+aucun recalcul ni rechargement de la base existante n’est nécessaire. Le manifeste
+refuse toute nomenclature incompatible.
 
 ## Préparation puis import explicite
 
@@ -30,7 +42,7 @@ au démarrage du service. Toutes ces ressources sont lisibles depuis un JAR.
 
 ```java
 boolean imported = RagIndexImporter.importIndex(
-    importDataSource, PrecomputedIndexResources.packaged());
+    importDataSource, PrecomputedIndexResources.packaged(hsCodeService));
 ```
 
 L’import crée `rag.embeddings` et `rag.index_manifest`, valide les fichiers et écrit
@@ -44,14 +56,14 @@ TLS, délais et pool appartiennent à la `DataSource` fournie.
 
 ```java
 RagHSCodeAnalysisService rag = RagHSCodeAnalysisService.construct(
-    openAIProperties, completion, readOnlyDataSource);
+    openAIProperties, completion, readOnlyDataSource, hsCodeService);
 ```
 
 Réutiliser cette instance et injecter le compte `rag_reader`, limité à la lecture.
 Le service vérifie le manifeste, les dimensions et les codes, sans importer ni lire
 les vecteurs locaux. Il ne crée aucun objet SQL et ne ferme pas la `DataSource`.
 La factory peut lever `IOException`, `SQLException` ou une erreur de validation.
-`loadIndex(readOnlyDataSource)` ouvre l’index sans construire de client OpenAI.
+`loadIndex(readOnlyDataSource, hsCodeService)` ouvre l’index sans construire de client OpenAI.
 
 `searchFromDescription()` conserve cinq résultats maximum, l’ordre LLM, le score
 fixe 3 et `OpenAI_Hybrid`. `searchDetailed()` conserve explications/questions et

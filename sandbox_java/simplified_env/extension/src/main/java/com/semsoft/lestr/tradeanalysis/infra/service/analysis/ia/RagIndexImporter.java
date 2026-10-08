@@ -1,6 +1,7 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.pgvector.PGvector;
+import com.semsoft.lestr.tradeanalysis.domain.model.HSCodeWithDescription;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,10 +49,10 @@ public final class RagIndexImporter {
                         "INSERT INTO rag.embeddings (embedding_id, embedding, text, metadata) VALUES (?, ?, ?, ?::jsonb)")) {
                     int[] batchSize = {0};
                     resources.readVectors((row, vector) -> {
-                        insert.setObject(1, id(row.code()));
+                        insert.setObject(1, id(row.hsCode().toDigits()));
                         insert.setObject(2, new PGvector(vector));
-                        insert.setString(3, row.contextualDescription());
-                        insert.setString(4, encode(Map.of("code", row.code())));
+                        insert.setString(3, resources.contextualDescription(row));
+                        insert.setString(4, encode(Map.of("code", row.hsCode().toDigits())));
                         insert.addBatch();
                         if (++batchSize[0] % 256 == 0) insert.executeBatch();
                     });
@@ -91,15 +92,15 @@ public final class RagIndexImporter {
             require(result.next() && ("vector(" + resources.dimensions + ")").equals(result.getString(1)),
                     "RAG database vector dimensions differ from the manifest");
         }
-        var expected = new HashMap<String, RagCatalog.Row>();
-        for (var row : resources.rows) expected.put(row.code(), row);
+        var expected = new HashMap<String, HSCodeWithDescription>();
+        for (var row : resources.rows) expected.put(row.hsCode().toDigits(), row);
         try (var statement = connection.createStatement(); var result = statement.executeQuery(
                 "SELECT embedding_id, text, metadata->>'code', embedding IS NOT NULL FROM rag.embeddings")) {
             while (result.next()) {
                 String code = result.getString(3);
                 var row = expected.remove(code);
                 require(row != null && id(code).equals(result.getObject(1, UUID.class))
-                                && row.contextualDescription().equals(result.getString(2)) && result.getBoolean(4),
+                                && resources.contextualDescription(row).equals(result.getString(2)) && result.getBoolean(4),
                         "Invalid, duplicate or unknown RAG database candidate");
             }
         }

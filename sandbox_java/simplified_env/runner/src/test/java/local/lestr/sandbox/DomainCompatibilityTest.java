@@ -14,9 +14,9 @@ class DomainCompatibilityTest {
         var code = HSCode.hsCode("0101.21");
         assertEquals("010121", code.toDigits());
         assertEquals("0101.21", code.toString());
-        assertEquals("01", code.getChapterCode());
-        assertEquals("01", code.getHeadingCode());
-        assertEquals("21", code.getSubHeadingCode());
+        assertEquals("01", code.chapterCode());
+        assertEquals("01", code.headingCode());
+        assertEquals("21", code.subHeadingCode());
         assertEquals(HSCode.hsCode("010121"), code);
         assertEquals(HSCode.hsCode("010121").hashCode(), code.hashCode());
         assertThrows(IllegalArgumentException.class, () -> HSCode.hsCode("01012100"));

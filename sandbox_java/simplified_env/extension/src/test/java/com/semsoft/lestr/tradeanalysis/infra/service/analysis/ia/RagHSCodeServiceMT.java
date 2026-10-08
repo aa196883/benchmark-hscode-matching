@@ -1,6 +1,7 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.semsoft.lestr.tradeanalysis.infra.service.HSCodeServiceImpl;
 import com.semsoft.lestr.common.test.Utils;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.AnalyseResult;
@@ -84,13 +85,14 @@ class RagHSCodeServiceMT {
             statement.execute("ALTER ROLE rag_import PASSWORD 'test-import'; "
                     + "ALTER ROLE rag_reader PASSWORD 'test-reader'");
         }
-        var resources = PrecomputedIndexResources.packaged();
+        var hsCodeService = new HSCodeServiceImpl();
+        var resources = PrecomputedIndexResources.packaged(hsCodeService);
         assertTrue(RagIndexImporter.importIndex(datasource("rag_import", "test-import"), resources));
         var reader = datasource("rag_reader", "test-reader");
         assertDatabaseMatchesVectors(reader, resources);
 
         ragHSCodeService = RagHSCodeAnalysisService.construct(
-                openAIProperties, UNUSED_ANALYSIS_DELEGATE, reader);
+                openAIProperties, UNUSED_ANALYSIS_DELEGATE, reader, hsCodeService);
     }
 
     private static DataSource datasource(String user, String password) {

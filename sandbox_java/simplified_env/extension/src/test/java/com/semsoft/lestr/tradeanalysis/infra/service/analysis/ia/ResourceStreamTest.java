@@ -16,28 +16,22 @@ class ResourceStreamTest {
             return Objects.requireNonNull(stream).readAllBytes();
         }
     }
-    @Test void catalogueStreamClosesAfterSuccessAndFailure() throws Exception {
-        var good = new TrackedStream(fixture("catalog.jsonl"));
-        assertEquals(3, new RagCatalog(good).candidates().size()); assertTrue(good.closed);
-        var bad = new TrackedStream("invalid".getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        assertThrows(IOException.class, () -> new RagCatalog(bad)); assertTrue(bad.closed);
-    }
     @Test void indexStreamsCloseAfterSuccess() throws Exception {
         var streams = new ArrayList<TrackedStream>();
-        var catalog = new RagCatalog(new ByteArrayInputStream(fixture("catalog.jsonl")));
+        var hsCodeService = RagTestSupport.hsCodeService();
         var index = RagTestSupport.index(new PrecomputedIndexResources(name -> {
             var stream = new TrackedStream(fixture(name)); streams.add(stream); return stream;
-        }, catalog));
+        }, hsCodeService));
         assertEquals(3, index.size()); assertEquals(2, streams.size());
         assertTrue(streams.stream().allMatch(stream -> stream.closed));
     }
     @Test void vectorStreamClosesWhenValidationFails() throws Exception {
         var streams = new ArrayList<TrackedStream>();
-        var catalog = new RagCatalog(new ByteArrayInputStream(fixture("catalog.jsonl")));
+        var hsCodeService = RagTestSupport.hsCodeService();
         assertThrows(IllegalArgumentException.class, () -> RagTestSupport.index(new PrecomputedIndexResources(name -> {
             byte[] bytes = name.equals("vectors.jsonl") ? "invalid".getBytes(java.nio.charset.StandardCharsets.UTF_8) : fixture(name);
             var stream = new TrackedStream(bytes); streams.add(stream); return stream;
-        }, catalog)));
+        }, hsCodeService)));
         assertEquals(2, streams.size()); assertTrue(streams.stream().allMatch(stream -> stream.closed));
     }
 }

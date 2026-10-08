@@ -35,7 +35,9 @@ Jackson BOM 2.21.4, JUnit Jupiter 5.12.2, Lombok 1.18.46, JSpecify 1.0.0,
 Commons Lang 3.20.0, Commons IO 2.21.0, SLF4J Simple 2.0.18 (runner).
 PostgreSQL JDBC 42.7.12, langchain4j-pgvector 1.20.0-beta30, Testcontainers 1.21.4.
 Image commune Compose/tests : pgvector/pgvector:0.8.1-pg17 (PostgreSQL 17).
-Plugins : Compiler 3.15.0, Surefire/Failsafe 3.5.4, Shade 3.6.0. Pas de Spring local.
+Plugins : Compiler 3.15.0, Surefire/Failsafe 3.5.4, Shade 3.6.0. Pas de contexte Spring local.
+Compat utilise Spring Core 6.2.19, Guava 33.7.1-jre, Jakarta JSON 2.1.3 et Parsson 1.1.7
+pour compiler/exécuter `HSCodeServiceImpl` sans modifier ses sources.
 Les POM font foi ; ne pas rechercher les versions récentes pour une tâche ordinaire.
 
 ## Points d’entrée et invariants
@@ -44,8 +46,8 @@ Package RAG commun, sous `extension/src/main/java/` :
 `com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`.
 Les tests sont sous le même package dans `src/test/java/`.
 
-- `RagHSCodeAnalysisService` : `construct(properties, analysisDelegate, datasource)` ouvre
-  l’index PostgreSQL ; `loadIndex(datasource)` l’ouvre sans client OpenAI.
+- `RagHSCodeAnalysisService` : `construct(properties, analysisDelegate, datasource, hsCodeService)` ouvre
+  l’index PostgreSQL ; `loadIndex(datasource, hsCodeService)` l’ouvre sans client OpenAI.
   La DataSource et son pool appartiennent à l’appelant ; pas de lecture d’environnement dans le métier.
   `searchDetailed()` orchestre le parcours ; `toSearchResult()` adapte sans nouvel appel.
 - `OpenAiRagClient` : modèles LangChain4j Responses/embeddings, injectables pour tests.
@@ -53,18 +55,25 @@ Les tests sont sous le même package dans `src/test/java/`.
   Défauts : `gpt-4.1-mini`, 2048, température/effort non renseignés ; `store=false`,
   schéma strict, embeddings `text-embedding-3-small`, `maxRetries(0)` côté embeddings.
   La factory utilise `OpenAIProperties.modelName()` ; délais via les modèles injectés.
-- `PrecomputedEmbeddingIndex` / `RagCatalog` : recherche exacte PostgreSQL via
-  PgVectorEmbeddingStore, catalogue en mémoire, contrôle du manifeste/dimensions/codes.
+- `PrecomputedEmbeddingIndex` / `HSCodeService` : recherche exacte PostgreSQL via
+  PgVectorEmbeddingStore, descriptions industrielles, contrôle du manifeste/dimensions/codes.
   Le compte de recherche a uniquement SELECT ; aucune création SQL au démarrage.
-  `PrecomputedIndexResources` valide les fichiers ; `RagIndexImporter.importIndex`
+  `PrecomputedIndexResources.packaged(hsCodeService)` valide nomenclature et fichiers ; `RagIndexImporter.importIndex`
   effectue un import explicite transactionnel, verrouillé et immuable (identique = aucune écriture).
   Le store en mémoire ne sert que dans les tests ; aucune solution de repli en production. Ne pas utiliser le store industriel `EmbeddingService`
   à leur place : format et descriptions différents.
 - Ressources sous `extension/src/main/resources/` + package commun : `rag_v1.txt`,
-  `rag_v1.schema.json`, `h6_2022/{catalog.jsonl,manifest.json,vectors.jsonl}`.
+  `rag_v1.schema.json`, `h6_2022/{manifest.json,vectors.jsonl}`.
   Lecture par flux, compatible JAR, aucun recalcul implicite ; vecteurs lus uniquement à l’import.
   `db/bootstrap.sql` prépare extension, rôles et schéma avant import (administrateur, une seule fois). Données complètes déjà
   présentes localement, ignorées par Git ; fixtures autonomes dans `src/test/resources/rag-fixtures/`.
+- `HSCodeServiceImpl` est copié sans modification dans `compat`, avec
+  `.../infra/service/hs_references/{H5.json,H6.json,conversionHS2022-HS2017.csv}`.
+  Le RAG injecte `HSCodeService`, garde les sous-positions 2022 hors 98/99 et reconstruit
+  chapitre > position > sous-position ; strip/guillemets normalisés préservent l’empreinte
+  des embeddings existants.
+  Le `lombok.config` de `compat/.../shared/kernel/goods/` active les accesseurs fluents
+  de `HSCode` attendus par l’implémentation fournie, sans modifier les Java industriels.
 - `runner/.../local/lestr/sandbox/Main.java` et `RagMain.java` : CLI/assemblage local.
   `extension` ne doit ni importer le runner ni redéfinir les classes de `compat`.
 - Codes HS textuels, zéros initiaux conservés : `toDigits()` pour les clés,
@@ -152,7 +161,7 @@ Lors de l’audit, `OPENAI_API_KEY` n’était pas exportée dans le shell : vé
 sa présence avant un appel réel et utiliser le mécanisme existant de chargement ;
 ne pas supposer qu’un secret configuré est déjà accessible au processus Java.
 
-Le script de préparation copie `../data/processed/h6_2022/catalog.jsonl` et
+Le script de préparation copie uniquement
 `../artifacts/embeddings/h6_2022/{manifest.json,vectors.jsonl}` sans appeler d’API.
 Seulement si une tâche demande la parité Python :
 `../.venv/bin/python scripts/verify_rag_parity.py` (JAR à jour, base importée et variables RAG_DB exportées) ;

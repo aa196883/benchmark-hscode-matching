@@ -152,5 +152,29 @@
     "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/NumberCandidates.java",
     "change": "conversation source; no behavioral edits",
     "origin": "user message, 2026-09-30"
+  },
+  "HSCodeServiceImpl.java": {
+    "reference_sha256": "6047c026553650e68a11f8987f35e502e9f78340141dd11376291c7049ae7e19",
+    "local_sha256": "6047c026553650e68a11f8987f35e502e9f78340141dd11376291c7049ae7e19",
+    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/HSCodeServiceImpl.java",
+    "change": "identical"
+  },
+  "hs_references/H6.json": {
+    "reference_sha256": "eed80374f1df306a56436d8198bc3d4c02ddaacb6c18304ddbfc71259d5ae039",
+    "local_sha256": "eed80374f1df306a56436d8198bc3d4c02ddaacb6c18304ddbfc71259d5ae039",
+    "local_path": "compat/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/hs_references/H6.json",
+    "change": "identical"
+  },
+  "hs_references/conversionHS2022-HS2017.csv": {
+    "reference_sha256": "161c1d9b9de1f177cd4c2458a4da1766ff6077c06d2b19adc6c05504f8b0cd5b",
+    "local_sha256": "161c1d9b9de1f177cd4c2458a4da1766ff6077c06d2b19adc6c05504f8b0cd5b",
+    "local_path": "compat/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/hs_references/conversionHS2022-HS2017.csv",
+    "change": "identical"
+  },
+  "hs_references/H5.json": {
+    "reference_sha256": "6efa04b8369c55aa9dfe637171bed8f451e5b78dcfd1d2a282523e74589f5a8d",
+    "local_sha256": "6efa04b8369c55aa9dfe637171bed8f451e5b78dcfd1d2a282523e74589f5a8d",
+    "local_path": "compat/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/hs_references/H5.json",
+    "change": "identical"
   }
 }
