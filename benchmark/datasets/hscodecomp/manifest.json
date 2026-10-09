@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "name": "hscodecomp",
+  "csv": "data.csv",
+  "edition": "2022",
+  "language": "en"
+}

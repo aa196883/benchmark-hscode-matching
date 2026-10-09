@@ -2,7 +2,7 @@
 
 ## Finalité et périmètre
 
-Explorer et benchmarquer des approches permettant d’inférer des codes HS à partir de descriptions de marchandises. Le moteur actuel cible des descriptions anglaises et le HS international 2022 à six chiffres : LLM direct, embeddings et RAG. CLI, interface Flask, collecte sur CSV et analyse des runs sont disponibles.
+Explorer et benchmarquer des approches permettant d’inférer des codes HS à partir de descriptions de marchandises. Le moteur actuel cible des descriptions anglaises et le HS international 2022 à six chiffres : LLM direct, embeddings et RAG. CLI, interface Flask, évaluation de datasets CSV et suivi MLflow sont disponibles.
 
 **Ne pas explorer, lire, rechercher dans ou modifier `sandbox_java/`, sauf demande explicite de l’utilisateur.** Exclure ce dossier des recherches globales, par exemple `rg --files -g '!sandbox_java'` ou `rg -n 'motif' hs_matching scripts benchmark tests traitement_csv`.
 
@@ -30,15 +30,17 @@ Explorer et benchmarquer des approches permettant d’inférer des codes HS à p
 | `hs_matching/web_presenters.py`, `templates/`, `static/`, `demo.py` | Présentation par approche, Jinja, CSS/JS sans compilation, fixtures sans API. |
 | `scripts/` | `preprocess_h6.py` : référentiel ; `build_embeddings.py` : index ; `snapshot_web.py` : captures Playwright. |
 | `benchmark/prepare_hscodecomp.py` | Extraction titre + HS6 de HSCodeComp vers CSV. |
-| `benchmark/benchmark.py`, `process_runs.py` | Collecte séquentielle, traces compactes incrémentales, agrégation et rapport Markdown. |
+| `benchmark/benchmark.py`, `cli.py`, `__main__.py` | CLI Python autonome MLflow : `run`, `import-dataset`, `datasets`, `ui`. Voir `benchmark/README.md`. |
+| `benchmark/datasets.py`, `datasets/*/manifest.json`, `tracking.py` | Datasets HS6, versions stockées dans MLflow Evaluation Datasets, une expérience `hs-matching/<nom>`, SQLite par défaut. |
+| `benchmark/runtime.py`, `runner.py`, `metrics.py` | Adaptation du moteur, exécution séquentielle, artifacts/checkpoints, métriques de classement/latence/tokens. |
 | `traitement_csv/traiter.py` | Inférence RAG avec checkpoints, puis remplacement des descriptions par les libellés du catalogue ; documentation locale dans `traitement_csv/README.md`. |
 | `tests/`, `benchmark/test_*.py`, `traitement_csv/test_traiter.py` | Tests `unittest`, fournisseurs simulés, sans appels API réels. |
-| `data/`, `artifacts/`, `runs/`, `benchmark/runs/` | Données, index/captures et résultats locaux ignorés par Git. Les données et rapports de `benchmark/` sont ignorés, seuls ses scripts Python sont suivis. |
+| `data/`, `artifacts/`, `runs/`, `benchmark/runs/` | Données, index/captures et résultats locaux ignorés par Git. Le stockage `benchmark/mlflow.db`, `mlartifacts/`, les CSV et runs sont ignorés ; scripts, documentation, requirements et manifests sont suivis. |
 | `sandbox_java/` | Hors périmètre, sauf demande explicite ; contenu et versions non audités. |
 
 ## Outils et versions
 
-Sources de vérité : `pyproject.toml`, `requirements.txt`, `requirements-dev.txt` ; aucun lockfile. Ne pas confondre plages compatibles et versions installées.
+Sources de vérité : `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, `benchmark/requirements.txt` ; aucun lockfile. Ne pas confondre plages compatibles et versions installées.
 
 | Outil | Version déclarée | Observée dans `.venv` lors de l’audit du 2026-10-09 |
 | --- | --- | --- |
@@ -48,8 +50,9 @@ Sources de vérité : `pyproject.toml`, `requirements.txt`, `requirements-dev.tx
 | Playwright (captures facultatives) | `>=1.50,<2` | `1.62.0` |
 | setuptools (build) | `>=68` | Non installé dans `.venv` ; build isolé possible via pip. |
 | pip | Non fixé | `24.0` |
+| MLflow (benchmark) | `>=3.16,<4` | `3.16.0` |
 
-Package `hs-matching` : `0.1.0`. `unittest` et transports HTTP `urllib` viennent de Python ; aucun SDK OpenAI ni chaîne Node/npm. `pip install -e .` seul n’installe pas Flask/NumPy : utiliser les requirements ou les extras `.[web]`, `.[embeddings]`, `.[visual]` selon le besoin.
+Package `hs-matching` : `0.1.0`. `unittest` et transports HTTP `urllib` viennent de Python ; aucun SDK OpenAI ni chaîne Node/npm. `pip install -e .` seul n’installe pas Flask/NumPy : utiliser les requirements ou les extras `.[web]`, `.[embeddings]`, `.[visual]`, `.[benchmark]` selon le besoin. Le benchmark s’installe aussi via `pip install -r benchmark/requirements.txt`.
 
 Modèles configurés dans le code : `gpt-4.1-mini` par défaut (surcharge `OPENAI_MODEL`/`--model`), `text-embedding-3-small` pour construire un index, alias `qwen3` → `Qwen/Qwen3-VL-4B-Instruct-FP8`. Ce sont des choix du projet, pas des garanties de disponibilité ni des snapshots figés. Qwen est routé dans les CLI d’inférence et benchmark ; la GUI utilise OpenAI.
 
@@ -76,7 +79,6 @@ Sélectionner la commande correspondant à la modification, pas tout le bloc :
 .venv/bin/python -m unittest discover -s tests -p 'test_web.py' -v
 .venv/bin/python -m unittest discover -s tests -p 'test_preprocess_h6.py' -v
 .venv/bin/python -m unittest benchmark.test_benchmark -v
-.venv/bin/python -m unittest benchmark.test_process_runs -v
 .venv/bin/python -m unittest discover -s traitement_csv -p 'test_traiter.py' -v
 ```
 
@@ -91,4 +93,5 @@ Pour un changement visuel, si pertinent : installer `requirements-dev.txt`, puis
 - Le RAG ne peut retenir que les candidats récupérés, avec `retrieval_k >= top_k`. Son prompt, son schéma et sa validation sont distincts du LLM direct.
 - Aucun précalcul implicite à l’inférence. Un index existant n’est pas écrasé ; une modification des codes/descriptions contextualisées impose une reconstruction explicite. Pas de retry ni de substitution automatique de modèle dans les fournisseurs actuels.
 - Réutiliser les approches et le retriever communs dans les interfaces. La GUI exécute les approches successivement et échappe les textes via Jinja.
-- Distinguer les traces détaillées d’inférence (`runs/`) des traces compactes de benchmark (`benchmark/runs/`), qui retirent les métadonnées brutes et sauvegardent chaque résultat. Le rapport agrège par `(model, approach)` seulement, tous candidats `ok`/`needs_info` confondus, même si les datasets ou paramètres diffèrent. Erreurs et abstentions restent au dénominateur ; les tokens inconnus restent `null`.
+- Le benchmark est indépendant de la CLI d’inférence : une expérience MLflow par dataset, un run par approche/configuration/sélection. Préserver les versions importées, leurs empreintes, l’ordre et les doublons. Toujours utiliser `--limit` pour un essai réel ciblé ; ne pas traiter tout le dataset pour valider un changement.
+- Conserver les résultats après chaque ligne dans MLflow et les checkpoints `benchmark/runs/`. Les métriques portent sur tous les candidats `ok`/`needs_info` ; erreurs/abstentions restent au dénominateur et les tokens inconnus sont exclus des moyennes. Les statuts et tags distinguent succès, erreur, interruption et sous-ensemble.

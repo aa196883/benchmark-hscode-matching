@@ -80,46 +80,32 @@ python -m hs_matching predict "Cotton knitted T-shirt" --model qwen3 --json
 
 L’alias `qwen3` désigne `Qwen/Qwen3-VL-4B-Instruct-FP8`. Le serveur doit accepter Chat Completions avec `response_format=json_schema`. `--reasoning-effort` n’est pas pris en charge. Le direct Qwen ne nécessite pas de clé OpenAI ; le RAG Qwen utilise encore OpenAI pour vectoriser la requête. Les fournisseurs ne retentent pas automatiquement les appels et ne substituent pas de modèle.
 
-## Benchmarker des datasets
+## Benchmarker avec MLflow
 
-Pour préparer le fichier HSCodeComp local :
-
-```bash
-python benchmark/prepare_hscodecomp.py \
-  benchmark/test_data.jsonl benchmark/hscodecomp_hs6_v1.csv
-```
-
-Cette extraction conserve uniquement `product_name` et les six premiers chiffres de `hs_code` ; elle simplifie les annotations du dataset original. Elle produit un CSV UTF-8 `HS code;description`, en conservant l’ordre et les doublons. Une sortie existante est remplacée.
+Le benchmark possède sa CLI Python dans `benchmark/`, avec une expérience
+`hs-matching/<dataset>` et des versions de datasets sauvegardées dans MLflow.
 
 ```bash
-python benchmark/benchmark.py --approach llm_direct --model qwen3
-python benchmark/benchmark.py --datasets benchmark/hscodecomp_hs6_v1.csv \
-  --approach embeddings --top-k 5
-python benchmark/benchmark.py --datasets benchmark/hscodecomp_hs6_v1.csv \
-  --approach rag --model gpt-4.1-mini --top-k 5 --retrieval-k 20
+python -m pip install -r benchmark/requirements.txt
+python benchmark/benchmark.py import-dataset --dataset hscodecomp
+python benchmark/benchmark.py run --dataset hscodecomp --approach llm_direct --limit 3
+python benchmark/benchmark.py ui
 ```
 
-`--datasets` accepte plusieurs CSV ; par défaut : `benchmark/hscodecomp_hs6_v1.csv`. Chaque CSV doit contenir exactement deux colonnes : code à six chiffres puis description non vide, avec séparateur `;` ou `,`, avec ou sans en-tête. Les fichiers sont tous validés avant les appels. Une invocation utilise une approche et un modèle ; pour embeddings, omettre `--model`.
+Ouvrir http://127.0.0.1:5001 pour comparer qualité du classement, latence et tokens.
+`--limit` borne les appels lors des essais. Ajouter un dossier avec manifest et CSV
+permet d’ajouter un dataset ; `--dataset-version` rejoue une version sauvegardée.
+Le stockage local est dans `benchmark/mlflow.db` et `benchmark/mlartifacts/`.
 
-La collecte écrit un nouveau JSON par dataset dans `benchmark/runs/`, sauvegardé après chaque résultat. Il contient vérité terrain, réponse validée, durée et tokens, sans les métadonnées brutes d’inférence. La durée exclut initialisation et écriture ; les tokens RAG incluent la vectorisation de la requête et le LLM, sans le précalcul. Un usage inconnu vaut `null`. La progression va sur stderr ; une erreur de prédiction n’arrête pas les lignes suivantes. Une interruption conserve les résultats présents, sans reprise automatique. Codes de sortie : `0` succès, `1` erreurs de prédiction, `2` erreur de configuration/exécution, `130` interruption clavier.
-
-### Analyser les résultats sans API
-
-```bash
-python benchmark/benchmark.py --process-runs \
-  --runs 'benchmark/runs/*.json' --output benchmark/report.md
-```
-
-Le rapport Markdown affiche les correspondances aux niveaux chapitre (2 chiffres), position (4) et sous-position (6), ainsi que les temps et tokens moyens. Une correspondance parmi **tous les candidats** des statuts `ok` ou `needs_info` suffit ; erreurs et abstentions restent au dénominateur. Les tokens absents sont exclus des moyennes concernées.
-
-Les runs sont regroupés uniquement par **modèle et approche**, même si leurs datasets, `top_k` ou autres paramètres diffèrent. Sélectionner séparément les fichiers pour comparer des configurations différentes. Les runs partiels sont signalés et seuls leurs résultats présents sont analysés. Le rapport existant est remplacé après validation.
+Voir [benchmark/README.md](benchmark/README.md) pour les options, les formats,
+les métriques et la gestion des erreurs/interruption.
 
 ## Structure et développement
 
 ```text
 hs_matching/     Moteur, approches, fournisseurs, index, CLI et GUI Flask
 scripts/         Prétraitement H6, précalcul embeddings, captures navigateur
-benchmark/       Préparation des datasets, collecte et analyse des runs, tests
+benchmark/       CLI autonome, datasets versionnés et suivi MLflow, tests
 traitement_csv/  Traitement RAG d’un CSV et remplacement des libellés, tests
 tests/           Tests du moteur, des fournisseurs et de la GUI
 data/            Sources et catalogue préparé (ignorés par Git)
@@ -128,13 +114,13 @@ runs/            Traces d’inférence et comparaisons (ignorées par Git)
 sandbox_java/    Espace séparé, à explorer/modifier seulement sur demande explicite
 ```
 
-Les consignes de contribution, versions locales et commandes de tests ciblées sont dans [AGENTS.md](AGENTS.md). Le traitement CSV avec checkpoints est documenté dans [traitement_csv/README.md](traitement_csv/README.md). Les données et rapports de `benchmark/` restent locaux et ignorés par Git.
+Les consignes de contribution, versions locales et commandes de tests ciblées sont dans [AGENTS.md](AGENTS.md). Le traitement CSV avec checkpoints est documenté dans [traitement_csv/README.md](traitement_csv/README.md). Les données, artifacts et bases MLflow de `benchmark/` restent locaux et ignorés par Git ; les manifests sont versionnés.
 
 Les tests utilisent `unittest` et des fournisseurs simulés, sans appels API. Exécuter seulement ceux concernés par le changement, par exemple :
 
 ```bash
 python -m unittest discover -s tests -p 'test_rag.py' -v
-python -m unittest benchmark.test_process_runs -v
+python -m unittest benchmark.test_benchmark -v
 ```
 
 Les tests de prétraitement exigent la source H6 ; ceux du LLM direct et certains tests Qwen exigent le catalogue préparé. Pour vérifier un changement visuel avec la démo :

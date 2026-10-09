@@ -1,0 +1,3 @@
+# Depuis la racine : python -m pip install -r benchmark/requirements.txt
+mlflow>=3.16,<4
+numpy>=1.24,<3

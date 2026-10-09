@@ -44,6 +44,12 @@ Thumbs.db
 /benchmark/**
 !/benchmark/**/
 !/benchmark/**/*.py
+!/benchmark/README.md
+!/benchmark/requirements.txt
+!/benchmark/datasets/*/manifest.json
+/benchmark/mlartifacts/
+/benchmark/mlruns/
+/benchmark/runs/
 
 # Scripts
 script.sh
