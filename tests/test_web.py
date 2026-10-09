@@ -88,8 +88,9 @@ class WebTests(unittest.TestCase):
         self.data['scenario'] = 'states'
         response = self.client.post('/', data=self.data, follow_redirects=True)
         html = response.get_data(as_text=True)
-        for label in ['À préciser', 'Exécution interrompue', 'Aucun classement proposé']:
-            self.assertIn(label, html)
+        self.assertIn('À préciser', html)
+        self.assertIn('Exécution interrompue', html)
+        self.assertNotIn('Aucun classement proposé', html)
         self.assertEqual(self.client.get('/comparisons/not-an-id/download').status_code, 404)
         self.assertEqual(self.client.get('/comparisons/' + '0' * 32).status_code, 404)
 

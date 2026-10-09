@@ -90,7 +90,9 @@ class RAGTests(unittest.TestCase):
 
     def test_empty_retrieval_and_retrieval_error(self):
         self.retriever.retrieve.return_value = ([], {})
-        self.assertEqual(self.predict().status, 'abstained')
+        result = self.predict()
+        self.assertEqual(result.status, 'error')
+        self.assertIn('Aucun candidat récupéré', result.error['message'])
         self.provider.generate.assert_not_called()
         self.retriever.retrieve.side_effect = ProviderError('http_error', 'Simulated', 429)
         result = self.predict()
@@ -99,19 +101,35 @@ class RAGTests(unittest.TestCase):
         self.provider.generate.assert_not_called()
 
     def test_missing_information_refusal_and_bad_response(self):
+        self.provider.generate.return_value = response(['010121'], 'needs_info', ['Intended use?'])
+        result = self.predict()
+        self.assertEqual(result.status, 'needs_info')
+        self.assertEqual(result.missing_information, ['Intended use?'])
+        self.assertEqual([candidate.code for candidate in result.candidates], ['010121'])
         self.provider.generate.return_value = response([], 'needs_info', ['Intended use?'])
-        self.assertEqual(self.predict().missing_information, ['Intended use?'])
-        self.provider.generate.return_value = response([], 'abstained')
-        self.assertEqual(self.predict().status, 'abstained')
+        self.assertEqual(self.predict().status, 'error')
         raw = response([])
         raw['output'][0]['content'] = [{'type': 'refusal', 'refusal': 'Refused'}]
         self.provider.generate.return_value = raw
-        self.assertEqual(self.predict().status, 'abstained')
-        for raw in [dict(status='incomplete'), response([]), response([], 'needs_info')]:
+        self.assertEqual(self.predict().status, 'needs_info')
+        for raw in [dict(status='incomplete'), response([]), response([], 'needs_info'), response([], 'abstained')]:
             self.provider.generate.return_value = raw
             result = self.predict()
             self.assertEqual(result.status, 'error')
             self.assertEqual(result.metadata['raw_response'], raw)
+
+    def test_weak_match_uses_needs_info_and_keeps_ranked_candidates(self):
+        self.provider.generate.return_value = response(
+            ['010129', '010121'], 'needs_info',
+            ['What material is it made from?', 'What is its physical form and intended use?'])
+        result = self.predict(top_k=2, retrieval_k=2, query='Latex')
+        self.assertEqual(result.status, 'needs_info')
+        self.assertEqual([candidate.code for candidate in result.candidates], ['010129', '010121'])
+        self.assertEqual(result.missing_information[0], 'What material is it made from?')
+        instructions = self.provider.generate.call_args.kwargs['instructions']
+        self.assertIn('weak or distant match', instructions)
+        self.assertIn('physical form', instructions)
+        self.assertNotIn('abstained', self.provider.generate.call_args.kwargs['schema']['properties']['status']['enum'])
 
     def test_generation_failure_keeps_retrieval_and_other_models_continue(self):
         self.provider.generate.side_effect = [ProviderError('http_error', 'Simulated', 500), response(['010121'])]

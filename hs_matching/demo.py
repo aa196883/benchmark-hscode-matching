@@ -40,5 +40,8 @@ def demo_run(approach, options):
             prediction.status, prediction.candidates = 'error', []
             prediction.error = {'kind': 'demo_error', 'message': 'Index indisponible. Vérifiez le dossier d’embeddings configuré.'}
         else:
-            prediction.status, prediction.candidates = 'abstained', []
+            prediction.status = 'needs_info'
+            prediction.missing_information = [
+                'Which material, composition, physical form, processing, or intended use best describes the merchandise?'
+            ]
     return {'predictions': [prediction.to_dict()], 'demo': True}

@@ -8,7 +8,7 @@ Projet Python pour explorer et comparer des approches d’inférence de codes HS
 | `embeddings` | Recherche cosinus sur les descriptions contextualisées du catalogue. |
 | `rag` | Récupération de K voisins, puis sélection et classement par un LLM parmi ces candidats. |
 
-Les résultats comprennent des candidats ordonnés, leurs libellés, des explications ou scores selon l’approche, et éventuellement une demande de précisions ou une abstention. Les scores cosinus ne sont pas des probabilités de justesse.
+Les résultats comprennent des candidats ordonnés, leurs libellés, des explications ou scores selon l’approche, et éventuellement une demande de précisions ; le RAG conserve toujours des candidats et utilise `needs_info` lorsque les candidats sont ambigus ou éloignés. Les scores cosinus ne sont pas des probabilités de justesse.
 
 ## Installation
 

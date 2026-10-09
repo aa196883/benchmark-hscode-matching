@@ -107,7 +107,7 @@ Les métriques sont calculées sur les résultats présents, avec un historique 
 
 | Métrique | Sens |
 | --- | --- |
-| `chapter_accuracy`, `heading_accuracy`, `hs6_accuracy` | Fraction ayant au moins un candidat correct à 2, 4 ou 6 chiffres, parmi tous les candidats `ok`/`needs_info`. Erreurs et abstentions restent au dénominateur. |
+| `chapter_accuracy`, `heading_accuracy`, `hs6_accuracy` | Fraction ayant au moins un candidat correct à 2, 4 ou 6 chiffres, parmi tous les candidats `ok`/`needs_info`. Erreurs et abstentions des approches qui les utilisent restent au dénominateur. |
 | `mean_response_time` | Temps moyen en secondes de prédiction, retrieval inclus, hors initialisation et suivi MLflow. |
 | `mean_input_tokens`, `mean_output_tokens`, `mean_total_tokens` | Moyennes des compteurs connus uniquement ; RAG inclut la vectorisation de la requête, pas le précalcul. |
 | `*_tokens_measured_rows`, `sum_*_tokens` | Nombre de mesures disponibles et somme des usages connus. Une moyenne inconnue est absente, pas remplacée par zéro. |
