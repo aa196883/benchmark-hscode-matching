@@ -21,21 +21,30 @@ def token_counts(metadata, approach):
     return {'input_tokens': input_tokens, 'output_tokens': output_tokens}
 
 
+def row_metrics(row):
+    """Scores d'une ligne ; le même calcul alimente traces et agrégats."""
+    answer = row['answer']
+    codes = [c['code'] for c in answer['candidates']
+             if isinstance(c.get('code'), str) and re.fullmatch(r'[0-9]{6}', c['code'])]
+    metrics = {f'{label}_match': answer['status'] in ('ok', 'needs_info') and any(
+        code[:width] == row['ground_truth'][:width] for code in codes)
+        for label, width in (('chapter', 2), ('heading', 4), ('hs6', 6))}
+    metrics.update(response_time=row['response_time'], input_tokens=row['input_tokens'],
+                   output_tokens=row['output_tokens'],
+                   total_tokens=(row['input_tokens'] + row['output_tokens']
+                                 if row['input_tokens'] is not None and row['output_tokens'] is not None else None),
+                   candidate_count=len(answer['candidates']), error=answer['status'] == 'error')
+    return metrics
+
 
 def summarize(results):
     count = len(results)
     metrics = {'evaluated_rows': count}
     if not count:
         return metrics
-    for label, width in (('chapter', 2), ('heading', 4), ('hs6', 6)):
-        hits = 0
-        for row in results:
-            answer = row['answer']
-            codes = [c['code'] for c in answer['candidates']
-                     if isinstance(c.get('code'), str) and re.fullmatch(r'[0-9]{6}', c['code'])]
-            hits += answer['status'] in ('ok', 'needs_info') and any(
-                code[:width] == row['ground_truth'][:width] for code in codes)
-        metrics[f'{label}_accuracy'] = hits / count
+    individual = [row_metrics(row) for row in results]
+    for label in ('chapter', 'heading', 'hs6'):
+        metrics[f'{label}_accuracy'] = sum(row[f'{label}_match'] for row in individual) / count
     metrics['mean_response_time'] = sum(r['response_time'] for r in results) / count
     for status in ('ok', 'needs_info', 'abstained', 'error'):
         metrics[f'{status}_count'] = sum(r['answer']['status'] == status for r in results)

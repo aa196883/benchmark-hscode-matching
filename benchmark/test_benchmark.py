@@ -169,6 +169,26 @@ class MLflowTests(unittest.TestCase):
                 self.assertEqual(results[0]['output_tokens'], 0 if name == 'embeddings' else 2)
                 self.assertTrue(self.artifact(run, 'dataset/dataset.csv').exists())
                 self.assertTrue(self.artifact(run, 'evaluation/table.json').exists())
+                traces = mlflow.search_traces(locations=[self.exp_id], run_id=run.info.run_id,
+                                              return_type='list')
+                self.assertEqual(len(traces), 1)
+                trace = traces[0]
+                self.assertEqual(results[0]['trace_id'], trace.info.trace_id)
+                self.assertEqual(trace.info.tags['dataset.row_id'], '1')
+                self.assertEqual(trace.info.trace_metadata['mlflow.sourceRun'], run.info.run_id)
+                span = trace.data.spans[0]
+                self.assertEqual(span.inputs['description'], 'Live horses')
+                self.assertNotIn('ground_truth', span.inputs)
+                self.assertEqual(span.outputs['candidates'][0]['code'], '010121')
+                scores = {a.name: a.feedback.value for a in trace.info.assessments if a.feedback is not None}
+                expected_tokens = 13 if name == 'rag' else 10
+                self.assertEqual(scores['input_tokens'], expected_tokens)
+                self.assertEqual(scores['hs6_match'], True)
+                self.assertGreaterEqual(scores['response_time'], 0)
+                self.assertEqual(span.attributes['mlflow.chat.tokenUsage']['input_tokens'], expected_tokens)
+                expectations = {a.name: a.expectation.value for a in trace.info.assessments if a.expectation is not None}
+                self.assertEqual(expectations['hs_code'], '010121')
+
         self.assertEqual(len(versions('tiny', self.exp_id)), 1)
         self.assertEqual(len(self.runs()), 3)
 
@@ -189,6 +209,46 @@ class MLflowTests(unittest.TestCase):
         self.assertEqual(run.data.tags['complete'], 'false')
         self.assertEqual(run.data.metrics['evaluated_rows'], 1)
         self.assertEqual(len(self.artifact(run, 'evaluation/results.jsonl').read_text().splitlines()), 1)
+        traces = mlflow.search_traces(locations=[self.exp_id], run_id=run.info.run_id, return_type='list')
+        self.assertEqual(len(traces), 2)
+        interrupted = next(t for t in traces if t.info.tags['prediction.status'] == 'interrupted')
+        self.assertEqual(interrupted.info.state.value, 'ERROR')
+        self.assertNotIn('hs6_match', [a.name for a in interrupted.info.assessments])
+
+
+    def test_three_rows_have_separate_traces_with_scores_and_diagnostics(self):
+        predictions = [
+            Prediction('ok', [Candidate('010129', 1, 'Other horses')], metadata={
+                'prompt_version': 'test_v1', 'prompt': {'instructions': 'Classify', 'input': 'Live horses'},
+                'raw_response': {'secret': 'DO_NOT_LOG'}, 'query_vector': [999],
+                'rejected_candidates': [{'code': 'bad', 'rank': 2, 'reason': 'invalid_format'}]}),
+            Prediction('needs_info', [Candidate('010121', 4, 'Horses')], missing_information=['Breed?']),
+            Prediction('error', error={'kind': 'http_error', 'message': 'Unavailable'}),
+        ]
+        engine, context = self.fake_engine(predictions)
+        with patch('benchmark.runner.build_approach', return_value=(engine, context)):
+            self.assertEqual(self.call(*self.run_args(limit=3)), 1, self.output.getvalue())
+        run = self.runs()[0]
+        traces = mlflow.search_traces(locations=[self.exp_id], run_id=run.info.run_id, return_type='list')
+        self.assertEqual(len(traces), 3)
+        self.assertEqual(len({t.info.trace_id for t in traces}), 3)
+        by_row = {t.info.tags['dataset.row_id']: t for t in traces}
+        self.assertEqual(set(by_row), {'1', '2', '3'})
+        self.assertEqual(by_row['3'].info.state.value, 'ERROR')
+        for row_id, expected_hs6 in [('1', False), ('2', True), ('3', False)]:
+            trace = by_row[row_id]
+            feedback = {a.name: a.feedback.value for a in trace.info.assessments if a.feedback is not None}
+            self.assertEqual(feedback['hs6_match'], expected_hs6)
+            self.assertNotIn('input_tokens', feedback)  # Inconnu, pas zéro.
+            self.assertNotIn('mlflow.chat.tokenUsage', trace.data.spans[0].attributes)
+        first = by_row['1'].data.spans[0].attributes['benchmark.details']
+        self.assertEqual(first['prompt_version'], 'test_v1')
+        self.assertEqual(first['rejected_candidates'][0]['code'], 'bad')
+        self.assertNotIn('raw_response', first)
+        self.assertNotIn('query_vector', first)
+        self.assertEqual(by_row['2'].data.spans[0].outputs['missing_information'], ['Breed?'])
+        self.assertAlmostEqual(run.data.metrics['hs6_accuracy'], 1 / 3)
+        self.assertEqual(engine.predict.call_count, 3)
 
     def test_initialization_failure_is_a_failed_run(self):
         with patch('benchmark.runner.build_approach', side_effect=ValueError('Missing index')):
@@ -221,6 +281,19 @@ class MLflowTests(unittest.TestCase):
         self.assertEqual(engine.predict.call_args.args[0], 'Other horses')
         result = json.loads(self.artifact(self.runs()[0], 'evaluation/results.json').read_text())[0]
         self.assertEqual(result['row_id'], 3)
+
+    def test_missing_trace_export_stops_calls_and_keeps_checkpoint(self):
+        engine, context = self.fake_engine()
+        with patch('benchmark.runner.build_approach', return_value=(engine, context)), \
+                patch('mlflow.get_trace', return_value=None):
+            self.assertEqual(self.call(*self.run_args(limit=3)), 2)
+        self.assertEqual(engine.predict.call_count, 1)
+        run = self.runs()[0]
+        self.assertEqual(run.info.status, 'FAILED')
+        checkpoint = self.root / 'runs' / run.info.run_id / 'results.jsonl'
+        result = json.loads(checkpoint.read_text())
+        self.assertTrue(result['trace_id'])
+        self.assertIn('Trace MLflow non sauvegardée', self.output.getvalue())
 
     def test_tracking_failure_stops_calls_and_keeps_local_checkpoint(self):
         engine, context = self.fake_engine()

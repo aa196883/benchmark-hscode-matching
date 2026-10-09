@@ -79,8 +79,29 @@ Qwen utilise l’alias `qwen3`, `LOCAL_QWEN_KEY` et `QWEN_BASE_URL`, avec tunnel
 
 - Paramètres : approche/modèle, version et ID du dataset, empreintes, sélection, catalogue et paramètres d’inférence.
 - Dataset : lien MLflow Input vers la sélection, CSV complet normalisé, manifest et lignes sélectionnées en artifacts. Le dataset complet reste également disponible dans Evaluation Datasets.
-- Résultats : `evaluation/results.jsonl` sauvegardé localement et dans MLflow après chaque ligne, puis `results.json` et `table.json` pour consulter les prédictions. Les sorties gardent les statuts, candidats, scores, questions et erreurs, sans les réponses brutes du fournisseur.
+- Traces : une trace native MLflow par ligne tentée, rattachée au run et au dataset. Elle conserve entrée, réponse validée, paramètres, prompt, candidats rejetés/récupérés et scores individuels ; erreurs et interruptions sont visibles.
+- Résultats : `evaluation/results.jsonl` sauvegardé localement et dans MLflow après chaque ligne, puis `results.json` et `table.json` pour consulter les prédictions. Chaque résultat contient son `trace_id`. Les sorties gardent les statuts, candidats, scores, questions et erreurs, sans les réponses brutes du fournisseur.
 - Reproductibilité : sources Python du benchmark/moteur et empreintes, révision Git, manifeste de l’index si applicable. Les clés `.env` ne sont jamais archivées.
+
+### Consulter les traces par ligne
+
+Dans l’expérience `hs-matching/<dataset>`, ouvrir **Traces** et filtrer sur le run.
+Un lancement avec `--limit 3` crée trois traces distinctes, y compris si deux lignes
+ont la même description. Cliquer une trace affiche :
+
+- **Inputs / Outputs** : description, identifiant de ligne, candidats ordonnés avec libellés/explications/scores, statut, questions et erreurs.
+- **Expectations** : `hs_code`, le code attendu (jamais transmis au modèle).
+- **Assessments / scores** : `chapter_match`, `heading_match`, `hs6_match`, `response_time`, tokens connus, `candidate_count` et `error`. Ces scores sont calculés par du code, sans juge LLM.
+- **Attributes** : approche/configuration, version du prompt et prompt effectif, rejets et candidats récupérés pour le RAG, durées détaillées lorsqu’elles sont disponibles. Les tags identifient dataset, version et ligne.
+
+Les tokens complets alimentent aussi l’affichage natif des tokens MLflow ; un
+compteur inconnu reste absent des scores, jamais remplacé par zéro. L’export des
+traces est attendu et vérifié après chaque ligne. Une trace interrompue est marquée
+`ERROR` / `prediction.status=interrupted`, sans score de classement ; elle ne compte
+pas parmi les résultats terminés. Les anciens runs créés sans tracing conservent
+leurs artifacts ; de nouvelles traces sont produites aux prochains lancements.
+
+### Métriques agrégées
 
 Les métriques sont calculées sur les résultats présents, avec un historique après chaque ligne :
 
@@ -98,7 +119,7 @@ Les appels sont séquentiels. Une erreur de prédiction est enregistrée et les 
 
 ## Code et tests ciblés
 
-`benchmark.py`/`__main__.py` exposent `cli.py`. `datasets.py` gère validation et versions ; `tracking.py` configure le stockage ; `runtime.py` adapte les approches existantes ; `runner.py` exécute les lignes ; `metrics.py` calcule les mesures sans API.
+`benchmark.py`/`__main__.py` exposent `cli.py`. `datasets.py` gère validation et versions ; `tracking.py` configure le stockage ; `runtime.py` adapte les approches existantes ; `runner.py` exécute les lignes ; `traces.py` enregistre les traces et évaluations individuelles ; `metrics.py` partage le calcul des mesures individuelles et agrégées sans API.
 
 ```bash
 python -m unittest benchmark.test_benchmark -v

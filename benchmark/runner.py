@@ -5,12 +5,11 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from time import perf_counter
 
 from benchmark.datasets import digest
-from benchmark.metrics import summarize, token_counts
+from benchmark.metrics import summarize
 from benchmark.runtime import build_approach
-from hs_matching.approaches.base import Prediction
+from benchmark.traces import persist_trace, predict_row
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -87,22 +86,14 @@ def evaluate(args, snapshot):
         print(f'0/{len(selected)}', file=sys.stderr)
         with (directory / 'results.jsonl').open('w', encoding='utf-8') as stream:
             for row in selected:
-                start = perf_counter()
-                try:
-                    prediction = approach.predict(row['description'], args.top_k, context).to_dict()
-                except Exception as exc:
-                    prediction = Prediction('error', error={'kind': type(exc).__name__,
-                                            'message': 'Erreur interne pendant la prédiction.'}).to_dict()
-                elapsed = perf_counter() - start
-                counts = token_counts(prediction.pop('metadata', {}), args.approach)
-                result = dict(row_id=row['row_id'], description=row['description'], ground_truth=row['hs_code'],
-                              response_time=elapsed, **counts, answer=prediction)
+                result = predict_row(args, snapshot, row, run_id, approach, context)
                 results.append(result)
                 stream.write(json.dumps(result, ensure_ascii=False) + '\n')
                 stream.flush()
+                persist_trace(result['trace_id'])
                 mlflow.log_artifact(str(directory / 'results.jsonl'), 'evaluation')
                 mlflow.log_metrics(summarize(results), step=len(results))
-                print(f'{len(results)}/{len(selected)} {prediction["status"]}', file=sys.stderr)
+                print(f'{len(results)}/{len(selected)} {result["answer"]["status"]}', file=sys.stderr)
         exit_code = 1 if any(r['answer']['status'] == 'error' for r in results) else 0
         status = 'FAILED' if exit_code else 'FINISHED'
     except KeyboardInterrupt:
@@ -114,7 +105,7 @@ def evaluate(args, snapshot):
             mlflow.set_tag('complete', str(len(results) == len(selected)).lower())
             if results:
                 mlflow.log_dict(results, 'evaluation/results.json')
-                mlflow.log_table(pd.DataFrame([dict(row_id=r['row_id'], description=r['description'],
+                mlflow.log_table(pd.DataFrame([dict(row_id=r['row_id'], trace_id=r['trace_id'], description=r['description'],
                     ground_truth=r['ground_truth'], status=r['answer']['status'],
                     candidates=json.dumps(r['answer']['candidates'], ensure_ascii=False),
                     response_time=r['response_time'], input_tokens=r['input_tokens'],

@@ -32,7 +32,7 @@ Explorer et benchmarquer des approches permettant d’inférer des codes HS à p
 | `benchmark/prepare_hscodecomp.py` | Extraction titre + HS6 de HSCodeComp vers CSV. |
 | `benchmark/benchmark.py`, `cli.py`, `__main__.py` | CLI Python autonome MLflow : `run`, `import-dataset`, `datasets`, `ui`. Voir `benchmark/README.md`. |
 | `benchmark/datasets.py`, `datasets/*/manifest.json`, `tracking.py` | Datasets HS6, versions stockées dans MLflow Evaluation Datasets, une expérience `hs-matching/<nom>`, SQLite par défaut. |
-| `benchmark/runtime.py`, `runner.py`, `metrics.py` | Adaptation du moteur, exécution séquentielle, artifacts/checkpoints, métriques de classement/latence/tokens. |
+| `benchmark/runtime.py`, `runner.py`, `traces.py`, `metrics.py` | Adaptation du moteur, exécution séquentielle, traces MLflow natives par ligne avec scores, artifacts/checkpoints, métriques de classement/latence/tokens. |
 | `traitement_csv/traiter.py` | Inférence RAG avec checkpoints, puis remplacement des descriptions par les libellés du catalogue ; documentation locale dans `traitement_csv/README.md`. |
 | `tests/`, `benchmark/test_*.py`, `traitement_csv/test_traiter.py` | Tests `unittest`, fournisseurs simulés, sans appels API réels. |
 | `data/`, `artifacts/`, `runs/`, `benchmark/runs/` | Données, index/captures et résultats locaux ignorés par Git. Le stockage `benchmark/mlflow.db`, `mlartifacts/`, les CSV et runs sont ignorés ; scripts, documentation, requirements et manifests sont suivis. |
@@ -94,4 +94,5 @@ Pour un changement visuel, si pertinent : installer `requirements-dev.txt`, puis
 - Aucun précalcul implicite à l’inférence. Un index existant n’est pas écrasé ; une modification des codes/descriptions contextualisées impose une reconstruction explicite. Pas de retry ni de substitution automatique de modèle dans les fournisseurs actuels.
 - Réutiliser les approches et le retriever communs dans les interfaces. La GUI exécute les approches successivement et échappe les textes via Jinja.
 - Le benchmark est indépendant de la CLI d’inférence : une expérience MLflow par dataset, un run par approche/configuration/sélection. Préserver les versions importées, leurs empreintes, l’ordre et les doublons. Toujours utiliser `--limit` pour un essai réel ciblé ; ne pas traiter tout le dataset pour valider un changement.
+- Créer une trace native MLflow par ligne tentée, liée au run, avec code attendu, réponse et scores individuels. Vérifier son export ; conserver son `trace_id` dans les résultats. Les traces interrompues ne comptent pas comme prédictions terminées.
 - Conserver les résultats après chaque ligne dans MLflow et les checkpoints `benchmark/runs/`. Les métriques portent sur tous les candidats `ok`/`needs_info` ; erreurs/abstentions restent au dénominateur et les tokens inconnus sont exclus des moyennes. Les statuts et tags distinguent succès, erreur, interruption et sous-ensemble.
