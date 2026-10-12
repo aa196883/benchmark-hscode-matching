@@ -23,10 +23,12 @@ def predict_row(args, snapshot, row, run_id, approach, context):
     import mlflow
     from mlflow.entities import AssessmentSource, MlflowExperimentLocation
 
+    resolved_model = (approach.retriever.index.config.model if args.approach == 'embeddings'
+                      else approach.config.model)
     interrupted = False
     tags = {'dataset.name': snapshot.name, 'dataset.id': snapshot.dataset_id,
             'dataset.version': str(snapshot.version), 'dataset.row_id': str(row['row_id']),
-            'approach': args.approach}
+            'approach': args.approach, 'model': resolved_model}
     with mlflow.start_span(name=f'{args.approach} / ligne {row["row_id"]}', span_type='CHAIN',
                           trace_destination=MlflowExperimentLocation(snapshot.experiment_id),
                           run_id=run_id) as span:
@@ -35,6 +37,7 @@ def predict_row(args, snapshot, row, run_id, approach, context):
         span.set_inputs({'description': row['description'], 'row_id': row['row_id']})
         span.set_attributes({'benchmark.top_k': args.top_k, 'benchmark.retrieval_k': args.retrieval_k,
                              'benchmark.requested_model': args.model,
+                             'benchmark.resolved_model': resolved_model,
                              'benchmark.catalog_sha256': context.catalog.sha256})
         mlflow.update_current_trace(tags=tags, metadata={'dataset.sha256': snapshot.sha256},
                                     client_request_id=f'{run_id}:{row["row_id"]}',

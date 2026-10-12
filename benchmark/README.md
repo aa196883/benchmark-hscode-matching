@@ -71,7 +71,7 @@ python benchmark/benchmark.py run --dataset hscodecomp --approach rag \
 
 `--approach` et `--dataset` sont obligatoires. Une commande crée un run, pour une approche sur un dataset. `--limit N` borne le nombre de descriptions inférées ; `--offset N` ignore les N premières lignes. Sans limite, toutes les lignes restantes sont traitées. La sélection est déterministe et archivée ; aucun juge LLM supplémentaire n’est appelé.
 
-Le catalogue préparé est nécessaire pour toutes les approches, l’index précalculé pour embeddings/RAG. Options : `--catalog`, `--index`, `--timeout`, `--max-output-tokens`, `--temperature`, `--reasoning-effort`, `--run-name`, `--runs-dir`. Le modèle LLM suit `--model`, puis `OPENAI_MODEL`, puis `gpt-4.1-mini`. Embeddings impose le modèle du manifeste d’index ; ne pas passer `--model`. Le RAG exige `--retrieval-k >= --top-k`.
+Le catalogue préparé est nécessaire pour toutes les approches, l’index précalculé pour embeddings/RAG. Options : `--catalog`, `--index`, `--timeout`, `--max-output-tokens`, `--temperature`, `--reasoning-effort`, `--run-name`, `--runs-dir`. Le modèle LLM suit `--model`, puis `OPENAI_MODEL`, puis `gpt-4.1-mini`. Le nom du run est `<approche>-<modèle résolu>`, ou `<run-name>-<modèle résolu>` avec `--run-name` (alias `qwen3` développé). Embeddings impose le modèle du manifeste d’index ; ne pas passer `--model`. Le RAG exige `--retrieval-k >= --top-k`.
 
 Qwen utilise l’alias `qwen3`, `LOCAL_QWEN_KEY` et `QWEN_BASE_URL`, avec tunnel déjà ouvert. Son RAG utilise encore OpenAI pour la vectorisation. Les inférences sont facturables selon le fournisseur ; ni l’import ni l’interface ni les métriques ne consomment de tokens modèle.
 
@@ -92,7 +92,7 @@ ont la même description. Cliquer une trace affiche :
 - **Inputs / Outputs** : description, identifiant de ligne, candidats ordonnés avec libellés/explications/scores, statut, questions et erreurs.
 - **Expectations** : `hs_code`, le code attendu (jamais transmis au modèle).
 - **Assessments / scores** : `chapter_match`, `heading_match`, `hs6_match`, `response_time`, tokens connus, `candidate_count` et `error`. Ces scores sont calculés par du code, sans juge LLM.
-- **Attributes** : approche/configuration, version du prompt et prompt effectif, rejets et candidats récupérés pour le RAG, durées détaillées lorsqu’elles sont disponibles. Les tags identifient dataset, version et ligne.
+- **Attributes** : approche/configuration, version du prompt et prompt effectif, rejets et candidats récupérés pour le RAG, durées détaillées lorsqu’elles sont disponibles. Les tags identifient dataset, version, ligne et modèle utilisé (`model`). Les attributs `benchmark.requested_model` et `benchmark.resolved_model` distinguent le modèle demandé du modèle résolu, même en cas d’erreur ou d’interruption.
 
 Les tokens complets alimentent aussi l’affichage natif des tokens MLflow ; un
 compteur inconnu reste absent des scores, jamais remplacé par zéro. L’export des

@@ -30,7 +30,7 @@ Explorer et benchmarquer des approches permettant d’inférer des codes HS à p
 | `hs_matching/web_presenters.py`, `templates/`, `static/`, `demo.py` | Présentation par approche, Jinja, CSS/JS sans compilation, fixtures sans API. |
 | `scripts/` | `preprocess_h6.py` : référentiel ; `build_embeddings.py` : index ; `snapshot_web.py` : captures Playwright. |
 | `benchmark/prepare_hscodecomp.py` | Extraction titre + HS6 de HSCodeComp vers CSV. |
-| `benchmark/benchmark.py`, `cli.py`, `__main__.py` | CLI Python autonome MLflow : `run`, `import-dataset`, `datasets`, `ui`. Voir `benchmark/README.md`. |
+| `benchmark/benchmark.py`, `cli.py`, `__main__.py` | CLI Python autonome MLflow : `run --model` (modèle résolu dans noms de runs et traces), `import-dataset`, `datasets`, `ui`. Voir `benchmark/README.md`. |
 | `benchmark/datasets.py`, `datasets/*/manifest.json`, `tracking.py` | Datasets HS6, versions stockées dans MLflow Evaluation Datasets, une expérience `hs-matching/<nom>`, SQLite par défaut. |
 | `benchmark/runtime.py`, `runner.py`, `traces.py`, `metrics.py` | Adaptation du moteur, exécution séquentielle, traces MLflow natives par ligne avec scores, artifacts/checkpoints, métriques de classement/latence/tokens. |
 | `traitement_csv/traiter.py` | Inférence RAG avec checkpoints, puis remplacement des descriptions par les libellés du catalogue ; documentation locale dans `traitement_csv/README.md`. |

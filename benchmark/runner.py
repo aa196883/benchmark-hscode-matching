@@ -82,6 +82,9 @@ def evaluate(args, snapshot):
             mlflow.log_params({'embedding_model': index.config.model, 'index': str(args.index)})
         if args.approach != 'embeddings':
             mlflow.log_param('resolved_model', approach.config.model)
+        resolved_model = (approach.retriever.index.config.model if args.approach == 'embeddings'
+                          else approach.config.model)
+        mlflow.set_tag('mlflow.runName', f'{args.run_name or args.approach}-{resolved_model}')
         print(f'Run MLflow : {run_id} | hs-matching/{snapshot.name} | {len(selected)} lignes', file=sys.stderr)
         print(f'0/{len(selected)}', file=sys.stderr)
         with (directory / 'results.jsonl').open('w', encoding='utf-8') as stream:

@@ -18,7 +18,9 @@ os.environ.setdefault('MLFLOW_DISABLE_AGENT_HINT', 'true')
 import mlflow
 from mlflow.genai import datasets as ml_datasets
 
-from benchmark.cli import main
+from benchmark.cli import main, parser, validate
+from benchmark.runtime import build_approach
+from hs_matching.providers.qwen import QWEN_MODEL
 from benchmark.datasets import get_snapshot, read_csv, versions
 from benchmark.metrics import summarize, token_counts
 from benchmark.tracking import configure
@@ -27,6 +29,32 @@ from hs_matching.providers.openai import ModelConfig
 
 
 class DatasetTests(unittest.TestCase):
+    def test_model_selection_reaches_runtime(self):
+        for approach in ('llm_direct', 'rag'):
+            for explicit, environment, expected in (
+                    ('chosen-model', 'env-model', 'chosen-model'),
+                    (None, 'env-model', 'env-model'),
+                    (None, None, 'gpt-4.1-mini'),
+                    ('qwen3', 'env-model', QWEN_MODEL)):
+                with self.subTest(approach=approach, model=explicit, env=environment):
+                    argv = ['run', '--dataset', 'tiny', '--approach', approach]
+                    if explicit:
+                        argv += ['--model', explicit]
+                    env = {'OPENAI_MODEL': environment} if environment else {}
+                    with patch.dict(os.environ, env, clear=True), \
+                            patch('benchmark.runtime.Catalog'), \
+                            patch('benchmark.runtime.OpenAIProvider'), \
+                            patch('benchmark.runtime.QwenProvider'), \
+                            patch('hs_matching.embedding_index.EmbeddingIndex') as index, \
+                            patch('hs_matching.vectorization.openai.OpenAIVectorizer'), \
+                            patch('hs_matching.embedding_index.EmbeddingRetriever'), \
+                            patch('benchmark.runtime.create_approach') as create:
+                        index.return_value.manifest = {'provider': 'openai'}
+                        args = parser().parse_args(argv)
+                        validate(args)
+                        build_approach(args)
+                    self.assertEqual(create.call_args.kwargs['config'].model, expected)
+
     def test_csv_validation_and_leading_zeroes(self):
         rows = read_csv(b'HS code;description\n010121;Horse\n010121;Horse\n')
         self.assertEqual([r['row_id'] for r in rows], [1, 2])
@@ -249,6 +277,32 @@ class MLflowTests(unittest.TestCase):
         self.assertEqual(by_row['2'].data.spans[0].outputs['missing_information'], ['Breed?'])
         self.assertAlmostEqual(run.data.metrics['hs6_accuracy'], 1 / 3)
         self.assertEqual(engine.predict.call_count, 3)
+
+    def test_selected_model_in_run_name_and_exported_traces(self):
+        for approach, requested, resolved, custom, failure in (
+                ('llm_direct', 'chosen-model', 'chosen-model', None, None),
+                ('rag', 'qwen3', QWEN_MODEL, 'comparison', RuntimeError('failed')),
+                ('llm_direct', 'qwen3', QWEN_MODEL, None, KeyboardInterrupt())):
+            with self.subTest(approach=approach, model=requested, failure=failure):
+                engine, context = self.fake_engine(side_effect=failure)
+                engine.config = ModelConfig(model=resolved)
+                options = dict(model=requested, limit=1)
+                if custom:
+                    options['run_name'] = custom
+                with patch('benchmark.runner.build_approach', return_value=(engine, context)):
+                    code = self.call(*self.run_args(approach, **options))
+                self.assertEqual(code, 130 if isinstance(failure, KeyboardInterrupt) else 1 if failure else 0)
+                run = self.runs()[0]
+                self.assertEqual(run.info.run_name, f'{custom or approach}-{resolved}')
+                self.assertEqual(run.data.params['model'], requested)
+                self.assertEqual(run.data.params['resolved_model'], resolved)
+                traces = mlflow.search_traces(locations=[self.exp_id], run_id=run.info.run_id,
+                                              return_type='list')
+                self.assertEqual(len(traces), 1)
+                self.assertEqual(traces[0].info.tags['model'], resolved)
+                attributes = traces[0].data.spans[0].attributes
+                self.assertEqual(attributes['benchmark.requested_model'], requested)
+                self.assertEqual(attributes['benchmark.resolved_model'], resolved)
 
     def test_initialization_failure_is_a_failed_run(self):
         with patch('benchmark.runner.build_approach', side_effect=ValueError('Missing index')):

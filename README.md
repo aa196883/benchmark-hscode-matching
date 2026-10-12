@@ -88,13 +88,15 @@ Le benchmark possède sa CLI Python dans `benchmark/`, avec une expérience
 ```bash
 python -m pip install -r benchmark/requirements.txt
 python benchmark/benchmark.py import-dataset --dataset hscodecomp
-python benchmark/benchmark.py run --dataset hscodecomp --approach llm_direct --limit 3
+python benchmark/benchmark.py run --dataset hscodecomp --approach llm_direct --model gpt-4.1-mini --limit 3
 python benchmark/benchmark.py ui
 ```
 
 Ouvrir http://127.0.0.1:5001 pour comparer qualité du classement, latence et tokens.
 `--limit` borne les appels lors des essais. Ajouter un dossier avec manifest et CSV
 permet d’ajouter un dataset ; `--dataset-version` rejoue une version sauvegardée.
+Le choix `--model` est transmis au moteur ; le modèle résolu figure dans le nom du run et les traces MLflow.
+
 Le stockage local est dans `benchmark/mlflow.db` et `benchmark/mlartifacts/`.
 
 Voir [benchmark/README.md](benchmark/README.md) pour les options, les formats,
