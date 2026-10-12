@@ -46,10 +46,10 @@ Package RAG commun, sous `extension/src/main/java/` :
 `com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`.
 Les tests sont sous le même package dans `src/test/java/`.
 
-- `RagHSCodeAnalysisService` : `construct(properties, analysisDelegate, datasource, hsCodeService)` ouvre
+- `RagHSCodeAnalysisService` : `construct(properties, datasource, hsCodeService)` ouvre
   l’index PostgreSQL ; `loadIndex(datasource, hsCodeService)` l’ouvre sans client OpenAI.
   La DataSource et son pool appartiennent à l’appelant ; pas de lecture d’environnement dans le métier.
-  `searchDetailed()` orchestre le parcours ; `toSearchResult()` adapte sans nouvel appel.
+  `searchFromDescription()` et `searchDetailed()` retournent le même `SearchResult_v2` complet.
 - `OpenAiRagClient` : modèles LangChain4j Responses/embeddings, injectables pour tests.
   `Config` : modèle, limite de sortie, température, effort de raisonnement.
   Défauts : `gpt-4.1-mini`, 2048, température/effort non renseignés ; `store=false`,
@@ -62,8 +62,8 @@ Les tests sont sous le même package dans `src/test/java/`.
   effectue un import explicite transactionnel, verrouillé et immuable (identique = aucune écriture).
   Le store en mémoire ne sert que dans les tests ; aucune solution de repli en production. Ne pas utiliser le store industriel `EmbeddingService`
   à leur place : format et descriptions différents.
-- Ressources sous `extension/src/main/resources/` + package commun : `rag_v1.txt`,
-  `rag_v1.schema.json`, `h6_2022/{manifest.json,vectors.jsonl}`.
+- Ressources sous `extension/src/main/resources/` + package commun : `rag_v2.txt`,
+  `rag_v2.schema.json`, `h6_2022/{manifest.json,vectors.jsonl}`.
   Lecture par flux, compatible JAR, aucun recalcul implicite ; vecteurs lus uniquement à l’import.
   `db/bootstrap.sql` prépare extension, rôles et schéma avant import (administrateur, une seule fois). Données complètes déjà
   présentes localement, ignorées par Git ; fixtures autonomes dans `src/test/resources/rag-fixtures/`.
@@ -76,12 +76,19 @@ Les tests sont sous le même package dans `src/test/java/`.
   de `HSCode` attendus par l’implémentation fournie, sans modifier les Java industriels.
 - `runner/.../local/lestr/sandbox/Main.java` et `RagMain.java` : CLI/assemblage local.
   `extension` ne doit ni importer le runner ni redéfinir les classes de `compat`.
-- Codes HS textuels, zéros initiaux conservés : `toDigits()` pour les clés,
-  `toString()` donne un format pointé. Scores fixes 2.5 détaillé / 3 industriel,
-  ordre LLM conservé, rangs non renumérotés après filtrage, source `OpenAI_Hybrid`.
-  `analyse()` délègue. Une liste vide arrête la chaîne industrielle de secours ;
-  les erreurs techniques et le rejet de tous les codes proposés lèvent une exception.
-  La projection industrielle perd questions et explications.
+- Contrat RAG : `HSCodeAnalysisService_v2` (recherche uniquement), `SearchResult_v2`
+  et `Candidate_v2` sous `extension`, transférables. Ne pas modifier les contrats industriels v1.
+  Aucun `analyse()`, délégué Completion ni score dans le parcours v2. `RagResult` et
+  `RagGenerationClient` v1 restent présents mais inutilisés par ce parcours.
+- Codes HS textuels, zéros initiaux conservés, ordre LLM conservé, rangs non renumérotés
+  après filtrage, source `OpenAI_Hybrid`. Les résultats conservent description et explication
+  nullable par candidat ; `missing_information` contient les questions globales.
+  Statuts JSON : `ok` (candidats, aucune question) et `needs_info` (candidats et questions).
+  Aucun `abstained` ; récupération vide, JSON invalide ou rejet de tous les codes : exception.
+- `RagGenerationClient_v2` distingue réponse JSON et refus explicite du fournisseur.
+  Un refus Responses terminé conserve les premiers voisins avec explications nulles et
+  la question générique du POC en `needs_info`. Une réponse incomplète ou vide reste une erreur.
+  La CLI émet directement le résultat v2, sans enveloppes `prediction` / `search_result`.
 - Si une copie industrielle doit changer : examiner la référence, caractériser le
   changement et documenter le manifeste. Ne jamais changer une empreinte pour masquer un échec.
 

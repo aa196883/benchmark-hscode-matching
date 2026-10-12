@@ -69,7 +69,7 @@ class ClasspathLoadingTest {
                 for (var file : files.filter(p -> p.toString().endsWith(".class")).toList())
                     entry(output, compiled.relativize(file).toString().replace(File.separatorChar, '/'), Files.readAllBytes(file));
             }
-            for (String name : List.of("rag_v1.txt", "rag_v1.schema.json")) {
+            for (String name : List.of("rag_v2.txt", "rag_v2.schema.json")) {
                 try (var stream = RagHSCodeAnalysisService.class.getResourceAsStream(name)) {
                     entry(output, PREFIX + name, Objects.requireNonNull(stream).readAllBytes());
                 }

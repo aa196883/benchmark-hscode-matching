@@ -13,7 +13,7 @@ Tests : JUnit Jupiter 5.12.2, Testcontainers `postgresql` et `junit-jupiter` 1.2
 Les tests locaux utilisent PostgreSQL 17 / pgvector 0.8.1.
 
 Sous `src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`,
-conserver sans filtrage `rag_v1.txt`, `rag_v1.schema.json`,
+conserver sans filtrage `rag_v2.txt`, `rag_v2.schema.json`,
 `h6_2022/{manifest.json,vectors.jsonl}` et `db/bootstrap.sql`.
 Les vecteurs servent uniquement à l’import ; le manifeste reste nécessaire au démarrage.
 Les descriptions viennent du `HSCodeService` industriel : injecter son instance
@@ -56,7 +56,7 @@ TLS, délais et pool appartiennent à la `DataSource` fournie.
 
 ```java
 RagHSCodeAnalysisService rag = RagHSCodeAnalysisService.construct(
-    openAIProperties, completion, readOnlyDataSource, hsCodeService);
+    openAIProperties, readOnlyDataSource, hsCodeService);
 ```
 
 Réutiliser cette instance et injecter le compte `rag_reader`, limité à la lecture.
@@ -65,11 +65,46 @@ les vecteurs locaux. Il ne crée aucun objet SQL et ne ferme pas la `DataSource`
 La factory peut lever `IOException`, `SQLException` ou une erreur de validation.
 `loadIndex(readOnlyDataSource, hsCodeService)` ouvre l’index sans construire de client OpenAI.
 
-`searchFromDescription()` conserve cinq résultats maximum, l’ordre LLM, le score
-fixe 3 et `OpenAI_Hybrid`. `searchDetailed()` conserve explications/questions et
-score 2.5 ; `toSearchResult()` adapte sans nouvel appel. `analyse()` délègue au
-service injecté. Les erreurs techniques déclenchent le secours existant ; une
-abstention vide arrête cette chaîne. Aucun secours implicite vers un index en mémoire.
+`RagHSCodeAnalysisService` implémente `HSCodeAnalysisService_v2` : recherche uniquement,
+aucun `analyse()` ni délégué Completion. Copier les nouveaux contrats `domain.spi.HSCodeAnalysisService_v2`,
+`domain.model.SearchResult_v2` et `domain.model.Candidate_v2` avec les sources du service.
+Les contrats industriels v1 sont conservés et ne doivent pas être écrasés. Le service
+ne s’insère plus dans une collection de `HSCodeAnalysisService` v1 : adapter les appelants
+et le câblage Spring au contrat v2 dans le dépôt industriel.
+
+`searchFromDescription()` retourne au maximum cinq candidats ; `searchDetailed(description, topK)`
+permet un nombre explicite, avec `retrievalK >= topK`. Les deux renvoient le même résultat :
+
+```json
+{
+  "source": "OpenAI_Hybrid",
+  "status": "needs_info",
+  "candidates": [
+    {"code": "010121", "rank": 1, "description": "Pure-bred breeding animals", "explanation": "Provisional match"}
+  ],
+  "missing_information": ["Is the animal intended for breeding?"]
+}
+```
+
+Les codes sont textuels, les descriptions viennent du catalogue, les rangs restent ceux
+proposés par le LLM, même après filtrage. Aucun score de confiance n’est ajouté.
+`SearchResult_v2.Status.OK` et `NEEDS_INFO` se sérialisent `ok` et `needs_info`.
+Les explications peuvent être nulles. Les listes du résultat sont immuables.
+`ok` exige des candidats et aucune question ; `needs_info` exige des candidats provisoires
+et des questions non vides. `abstained` et les champs JSON supplémentaires sont rejetés.
+Une récupération vide, une réponse invalide ou le rejet de tous les codes proposés lève
+une exception. Les erreurs techniques ne sont pas transformées en résultat métier.
+
+`RagGenerationClient_v2` retourne soit `Answer` (JSON), soit `Refusal`. Le client OpenAI
+vérifie le statut Responses et ses contenus `refusal` via les métadonnées HTTP du modèle
+LangChain4j. Un refus explicite d’une réponse terminée produit `needs_info`, les premiers
+voisins, des explications nulles et la question générique du POC sur les caractéristiques
+de la marchandise. Une réponse incomplète ou vide reste une erreur. Les modèles injectés
+pour les tests peuvent retourner du texte sans métadonnées HTTP ; leur motif de fin,
+lorsqu’il est renseigné, doit être `STOP`.
+
+`RagResult` et `RagGenerationClient` v1 restent disponibles mais ne sont plus utilisés
+par le service. Aucun secours implicite vers un index en mémoire.
 
 ## Validation
 

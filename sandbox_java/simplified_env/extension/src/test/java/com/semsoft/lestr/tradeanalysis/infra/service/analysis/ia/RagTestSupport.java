@@ -2,7 +2,6 @@ package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
-import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
 import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeService;
 import java.io.*;
 import java.nio.file.*;
@@ -67,9 +66,4 @@ final class RagTestSupport {
             }
         };
     }
-    static final HSCodeAnalysisService DELEGATE = new HSCodeAnalysisService() {
-        public SearchResult searchFromDescription(String description) { throw new AssertionError("Search must not delegate"); }
-        public AnalyseResult analyse(String description, HSCode code) { return new AnalyseResult(Source.Verbatim, description + " " + code.toDigits()); }
-        public Source getSource() { return Source.Verbatim; }
-    };
 }

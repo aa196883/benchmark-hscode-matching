@@ -103,8 +103,16 @@ base locale ; ne l’utiliser que pour repartir de zéro.
 
 Défauts : `text-embedding-3-small`, `gpt-4.1-mini`, 2048 tokens de sortie, 20 voisins,
 5 résultats. Recherche cosinus exacte, égalités départagées par code ; ordre LLM
-conservé, scores fixes 2.5 détaillé / 3 industriel, source `OpenAI_Hybrid`.
-`searchDetailed()` conserve questions/explications ; `analyse()` délègue à la completion.
+conservé, sans score de confiance, source `OpenAI_Hybrid`.
+`searchFromDescription()` et `searchDetailed()` retournent un `SearchResult_v2` unique :
+statut `ok` ou `needs_info`, candidats (`code`, `rank`, `description`, `explanation`)
+et questions globales `missing_information`. `needs_info` conserve les candidats
+provisoires même si les correspondances sont faibles. Un refus explicite du fournisseur
+conserve les premiers voisins et pose la question générique du POC ; une réponse
+incomplète, une récupération vide ou une réponse invalide déclenche une exception.
+La CLI affiche directement cet objet JSON, sans `prediction` / `search_result`.
+L’interface `HSCodeAnalysisService_v2` ne propose pas `analyse()` et ne nécessite
+aucun délégué Completion. Les contrats v1 restent inchangés.
 
 ## Intégration industrielle
 
@@ -116,6 +124,8 @@ ni `runner`, ni leurs JAR/POM.**
 
 Le module cible doit préparer sa base, lancer l’import avec son compte dédié, puis
 injecter sa `DataSource` de lecture dans
-`RagHSCodeAnalysisService.construct(openAIProperties, analysisDelegate, datasource, hsCodeService)`.
+`RagHSCodeAnalysisService.construct(openAIProperties, datasource, hsCodeService)`.
 Le service ne possède pas le pool de connexions. Valider câblage Spring, ressources,
-dépendances et secours : exception → service suivant ; résultat vide → arrêt de la chaîne.
+dépendances et appelants v2 dans le dépôt industriel. Le nouveau service n’implémente
+pas l’interface v1 de la chaîne de secours ; son raccordement doit être explicite.
+Les nouveaux contrats v2 sont inclus dans les sources transférables d’`extension`.

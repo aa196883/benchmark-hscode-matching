@@ -3,13 +3,8 @@ package local.lestr.sandbox;
 import com.fasterxml.jackson.databind.*;
 import com.semsoft.lestr.tradeanalysis.infra.service.HSCodeServiceImpl;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
-import com.semsoft.lestr.shared.kernel.goods.HSCode;
-import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
-import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
-import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.CompletionHSCodeChatServiceImpl;
 import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.*;
 import java.nio.file.*;
-import java.util.Map;
 
 /** Local wiring for packaged resources and explicit replay fixtures. */
 final class RagMain {
@@ -45,8 +40,7 @@ final class RagMain {
         int retrievalK = args.length > descriptionPosition + 2 ? Integer.parseInt(args[descriptionPosition + 2]) : 20;
         var index = RagHSCodeAnalysisService.loadIndex(datasource(false), hsCodeService);
         RagEmbeddingClient embeddings;
-        RagGenerationClient generation;
-        HSCodeAnalysisService analysisDelegate;
+        RagGenerationClient_v2 generation;
         if (replay) {
             int vectorPosition = 1;
             double[] vector = JSON.readValue(Files.readString(Path.of(args[vectorPosition])), double[].class);
@@ -55,33 +49,16 @@ final class RagMain {
                 @Override public Integer dimensions() { return index.configuredDimensions(); }
                 @Override public double[] embed(String description) { return vector.clone(); }
             };
-            generation = (instructions, input, schema) -> response;
-            analysisDelegate = new HSCodeAnalysisService() {
-                public SearchResult searchFromDescription(String description) {
-                    throw new UnsupportedOperationException("Replay does not use an analysis delegate");
-                }
-                public AnalyseResult analyse(String description, HSCode code) {
-                    throw new UnsupportedOperationException("Replay does not evaluate analysis");
-                }
-                public Source getSource() {
-                    return Source.OpenAI_Hybrid;
-                }
-            };
+            generation = (instructions, input, schema) -> new RagGenerationClient_v2.Answer(response);
         } else {
             String key = System.getenv("OPENAI_API_KEY");
             if (key == null || key.isBlank()) throw new IllegalArgumentException("OPENAI_API_KEY required for rag");
             var client = new OpenAiRagClient(key, index.configuredDimensions(), OpenAiRagClient.Config.defaults());
             embeddings = client; generation = client;
-            analysisDelegate = CompletionHSCodeChatServiceImpl.construct(new OpenAIProperties(key), hsCodeService, HSVersion.V_2022);
         }
-        var service = new RagHSCodeAnalysisService(index, embeddings, generation, analysisDelegate, retrievalK);
+        var service = new RagHSCodeAnalysisService(index, embeddings, generation, retrievalK);
         var prediction = service.searchDetailed(args[descriptionPosition], topK);
-        var output = JSON.createObjectNode();
-        output.set("prediction", JSON.valueToTree(prediction));
-        var adapted = service.toSearchResult(prediction);
-        output.set("search_result", JSON.valueToTree(Map.of("source", adapted.source().name(), "matchingHSCodes",
-                adapted.matchingHSCodes().stream().map(hit -> Map.of("code", hit.HSCode().toDigits(), "score", hit.score().score())).toList())));
-        System.out.println(JSON.writeValueAsString(output));
+        System.out.println(JSON.writeValueAsString(prediction));
         return 0;
     }
 }

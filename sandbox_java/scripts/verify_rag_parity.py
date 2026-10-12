@@ -49,13 +49,12 @@ def main():
             command = ['java', '-jar', str(args.jar.resolve()), 'rag-replay',
                        str(folder/'query.json'), str(folder/'response.json'), 'offline parity query', '5', '20']
             completed = subprocess.run(command, check=True, text=True, capture_output=True, cwd=folder, timeout=90)
-            output = json.loads(completed.stdout); java = output['prediction']
+            java = json.loads(completed.stdout)
             assert java['status'] == py.status == 'ok'
             assert [(c['code'],c['rank'],c['explanation']) for c in java['candidates']] == [(c.code,c.rank,c.explanation) for c in py.candidates]
             assert java['missing_information'] == py.to_dict()['missing_information']
-            assert all(c['score'] == 2.5 for c in java['candidates'])
-            assert [c['code'] for c in output['search_result']['matchingHSCodes']] == selected
-            assert all(c['score'] == 3 for c in output['search_result']['matchingHSCodes'])
+            assert all('score' not in c for c in java['candidates'])
+            assert java['source'] == 'OpenAI_Hybrid'
             reports.append({'query_index_code':index.codes[position], 'retrieval_k':20, 'same_candidates':True})
     report = {'index_count':len(index.codes), 'dimensions':index.manifest['dimensions'],
               'vectors_sha256':index.manifest['vectors_sha256'], 'api_calls':0, 'resource_mode':'postgresql', 'cases':reports}

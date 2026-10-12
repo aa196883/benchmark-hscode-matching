@@ -81,16 +81,11 @@ class PgVectorIndexIT {
             public double[] embed(String text) { return new double[]{1, 0}; }
         };
         String answer = Files.readString(Path.of("src/test/resources/rag-fixtures/response.json"));
-        var service = new RagHSCodeAnalysisService(index, embeddings, (instructions, input, schema) -> answer,
-                RagTestSupport.DELEGATE, 3);
+        var service = new RagHSCodeAnalysisService(index, embeddings, (instructions, input, schema) -> new RagGenerationClient_v2.Answer(answer),
+                3);
         var detailed = service.searchDetailed("Live horses", 2);
-        assertEquals(List.of("010129", "010121"), detailed.candidates().stream().map(RagResult.Candidate::code).toList());
-        assertTrue(detailed.candidates().stream().allMatch(candidate -> candidate.score() == 2.5));
-        var adapted = service.toSearchResult(detailed);
-        assertTrue(adapted.matchingHSCodes().stream().allMatch(candidate -> candidate.score().score() == 3));
-        assertEquals("OpenAI_Hybrid", adapted.source().name());
-        assertEquals("test 010121", service.analyse("test",
-                com.semsoft.lestr.shared.kernel.goods.HSCode.hsCode("010121")).analyse());
+        assertEquals(List.of("010129", "010121"), detailed.candidates().stream().map(com.semsoft.lestr.tradeanalysis.domain.model.Candidate_v2::code).toList());
+        assertEquals("OpenAI_Hybrid", detailed.source().name());
         // No vector resource is opened by a new runtime instance.
         var readOnlyResources = new PrecomputedIndexResources(name -> {
             assertEquals("manifest.json", name);

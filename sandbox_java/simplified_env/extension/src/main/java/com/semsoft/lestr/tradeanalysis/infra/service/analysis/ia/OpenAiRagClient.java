@@ -12,7 +12,7 @@ import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiResponsesChatModel;
 
 /** Thin LangChain4j adapter: generated JSON text and query vector only. */
-public final class OpenAiRagClient implements RagGenerationClient, RagEmbeddingClient {
+public final class OpenAiRagClient implements RagGenerationClient_v2, RagEmbeddingClient {
     public record Config(String model, int maxOutputTokens, Double temperature, String reasoningEffort) {
         public static Config defaults() { return new Config("gpt-4.1-mini", 2048, null, null); }
     }
@@ -36,14 +36,30 @@ public final class OpenAiRagClient implements RagGenerationClient, RagEmbeddingC
     }
     @Override public Integer dimensions() { return dimensions; }
 
-    @Override public String generate(String instructions, String input, JsonNode schema) {
+    @Override public Result generate(String instructions, String input, JsonNode schema) {
         var format = ResponseFormat.builder().type(ResponseFormatType.JSON)
                 .jsonSchema(JsonSchema.builder().name("hs_prediction")
                         .rootElement(JsonRawSchema.from(schema.toString())).build()).build();
         var request = ChatRequest.builder()
                 .messages(SystemMessage.from(instructions), UserMessage.from(input))
                 .parameters(ChatRequestParameters.builder().responseFormat(format).build()).build();
-        return generation.chat(request).aiMessage().text();
+        var response = generation.chat(request);
+        if (response.metadata() instanceof dev.langchain4j.model.openai.OpenAiResponsesChatResponseMetadata metadata
+                && metadata.rawHttpResponse() != null) {
+            var raw = RagJson.parse(metadata.rawHttpResponse().body());
+            if (!"completed".equals(raw.path("status").asText()))
+                throw new com.semsoft.lestr.tradeanalysis.domain.model.HSCodeAnalysisException("Incomplete RAG provider response");
+            for (var item : raw.path("output")) {
+                if (!"message".equals(item.path("type").asText())) continue;
+                for (var part : item.path("content"))
+                    if ("refusal".equals(part.path("type").asText())) return new Refusal();
+            }
+        } else if (response.finishReason() != null && response.finishReason() != dev.langchain4j.model.output.FinishReason.STOP) {
+            throw new com.semsoft.lestr.tradeanalysis.domain.model.HSCodeAnalysisException("Incomplete RAG provider response");
+        }
+        if (response.aiMessage() == null || response.aiMessage().text() == null || response.aiMessage().text().isBlank())
+            throw new com.semsoft.lestr.tradeanalysis.domain.model.HSCodeAnalysisException("Empty RAG provider response");
+        return new Answer(response.aiMessage().text());
     }
     @Override public double[] embed(String description) {
         float[] vector = embeddings.embed(description).content().vector();

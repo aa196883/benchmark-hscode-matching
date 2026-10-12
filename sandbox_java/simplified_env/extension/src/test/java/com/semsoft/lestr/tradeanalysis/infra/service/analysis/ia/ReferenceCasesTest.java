@@ -29,7 +29,7 @@ class ReferenceCasesTest {
             return new double[]{1, 0};
         };
         JsonNode expected = c.get("expected");
-        RagGenerationClient generate = (instructions, input, schema) -> {
+        RagGenerationClient_v2 generate = (instructions, input, schema) -> {
             generateCalls.incrementAndGet();
             JsonNode prompt = c.get("prompt");
             assertEquals(prompt.path("instructions").asText(), instructions);
@@ -37,9 +37,9 @@ class ReferenceCasesTest {
             assertEquals(prompt.get("schema"), schema);
             assertFalse(input.contains("cosine"));
             assertFalse(parse(input).path("candidates").get(0).has("score"));
-            return c.get("response").asText();
+            return new RagGenerationClient_v2.Answer(c.get("response").asText());
         };
-        var service = new RagHSCodeAnalysisService(index, embed, generate, RagTestSupport.DELEGATE, c.get("retrieval_k").asInt());
+        var service = new RagHSCodeAnalysisService(index, embed, generate, c.get("retrieval_k").asInt());
         if (c.path("fails").asBoolean()) {
             assertThrows(HSCodeAnalysisException.class,
                     () -> service.searchDetailed(c.get("query").asText(), c.get("top_k").asInt()));
@@ -47,10 +47,7 @@ class ReferenceCasesTest {
             var result = service.searchDetailed(c.get("query").asText(), c.get("top_k").asInt());
             // Exact business JSON also ensures diagnostic fields are absent.
             assertEquals(expected, MAPPER.valueToTree(result));
-            var adapted = service.toSearchResult(result);
-            assertEquals(result.candidates().stream().limit(5).map(RagResult.Candidate::code).toList(),
-                    adapted.matchingHSCodes().stream().map(hit -> hit.HSCode().toDigits()).toList());
-            assertTrue(adapted.matchingHSCodes().stream().allMatch(hit -> hit.score().score() == 3));
+
         }
         assertEquals(c.get("embedding_calls").asInt(), embedCalls.get());
         assertEquals(c.get("generation_calls").asInt(), generateCalls.get(), "Mapping must not call the model again");

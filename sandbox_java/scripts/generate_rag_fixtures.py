@@ -63,7 +63,8 @@ def main():
             for candidate in expected['candidates']:
                 candidate.pop('references', None)
                 candidate.pop('score_type', None)
-                candidate['score'] = 2.5  # Java business display score, independent of the reference score.
+                candidate.pop('score', None)
+            expected['source'] = 'OpenAI_Hybrid'
             cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query,
                               top_k=top_k, retrieval_k=retrieval_k, prompt=prompt, fails=fails,
                               embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=None if fails else expected))

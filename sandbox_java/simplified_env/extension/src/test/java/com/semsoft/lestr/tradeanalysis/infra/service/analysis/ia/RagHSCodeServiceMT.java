@@ -4,10 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.semsoft.lestr.tradeanalysis.infra.service.HSCodeServiceImpl;
 import com.semsoft.lestr.common.test.Utils;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
-import com.semsoft.lestr.tradeanalysis.domain.model.AnalyseResult;
-import com.semsoft.lestr.tradeanalysis.domain.model.SearchResult;
-import com.semsoft.lestr.tradeanalysis.domain.model.Source;
-import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
 import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
@@ -48,29 +44,6 @@ class RagHSCodeServiceMT {
     private static final Logger log =
             LoggerFactory.getLogger(RagHSCodeServiceMT.class);
 
-    /*
-     * searchFromDescription() does not use the analysis delegate.
-     * This stub exists only because RagHSCodeAnalysisService requires one.
-     */
-    private static final HSCodeAnalysisService UNUSED_ANALYSIS_DELEGATE =
-            new HSCodeAnalysisService() {
-
-                @Override
-                public SearchResult searchFromDescription(String description) {
-                    throw new UnsupportedOperationException();
-                }
-
-                @Override
-                public AnalyseResult analyse(String description, HSCode hsCode) {
-                    throw new UnsupportedOperationException();
-                }
-
-                @Override
-                public Source getSource() {
-                    throw new UnsupportedOperationException();
-                }
-            };
-
     private RagHSCodeAnalysisService ragHSCodeService;
 
     @BeforeAll
@@ -92,7 +65,7 @@ class RagHSCodeServiceMT {
         assertDatabaseMatchesVectors(reader, resources);
 
         ragHSCodeService = RagHSCodeAnalysisService.construct(
-                openAIProperties, UNUSED_ANALYSIS_DELEGATE, reader, hsCodeService);
+                openAIProperties, reader, hsCodeService);
     }
 
     private static DataSource datasource(String user, String password) {
@@ -177,21 +150,21 @@ class RagHSCodeServiceMT {
                 expectedHSCode
         );
 
-        SearchResult result =
+        com.semsoft.lestr.tradeanalysis.domain.model.SearchResult_v2 result =
                 ragHSCodeService.searchFromDescription(description);
 
         log.info(
                 "Candidates for '{}': {}",
                 description,
-                result.matchingHSCodes()
+                result.candidates()
         );
 
         HSCode expected = HSCode.hsCode(expectedHSCode);
 
-        boolean found = result.matchingHSCodes()
+        boolean found = result.candidates()
                 .stream()
                 .anyMatch(candidate ->
-                        candidate.HSCode().equals(expected)
+                        candidate.code().equals(expected.toDigits())
                 );
 
         assertTrue(
