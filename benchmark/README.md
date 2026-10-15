@@ -62,6 +62,86 @@ L’identité de l’expérience dépend du nom du dataset, jamais de l’approc
 
 ## Évaluation
 
+### Dataset CROSS Rulings (split test)
+
+Source : [Dayanand314Krishna/cross_rulings_hts_dataset_for_tariffs](https://huggingface.co/datasets/Dayanand314Krishna/cross_rulings_hts_dataset_for_tariffs),
+révision figée `0a66ad345d3fc9828f362836d86b31e20798513c`.
+Attribution : CROSS Rulings HTS Dataset for Tariff Classification by Flexify.AI Inc.
+([auteur](https://www.flexify.ai), [dataset original cité par la fiche](https://huggingface.co/datasets/flexifyai/cross_rulings_hts_dataset_for_tariffs)).
+La fiche annonce la licence Apache-2.0. Notre dérivé utilise uniquement le split
+`test` de 200 lignes ; `train` et `validation` ne sont pas téléchargés ni mélangés.
+
+```bash
+python benchmark/prepare_cross_rulings.py --download
+python benchmark/benchmark.py import-dataset --dataset cross_rulings_test
+python benchmark/benchmark.py run --dataset cross_rulings_test --approach rag --limit 3
+```
+
+Le téléchargement est explicite et sans écrasement. Si la source existe déjà,
+omettre `--download`. Les sorties existantes sont refusées ; utiliser `--output`
+pour une nouvelle préparation. Aucun appel modèle n'est effectué par ce script.
+
+Modifications : extraction de la description du message utilisateur, retrait de
+la question standard, normalisation des espaces et conversion HTS10 vers HS6.
+Le raisonnement assistant n'est jamais ajouté à la description. Seuls les codes
+de l'en-tête `HTS US Code ->` sont lus ; les formats inconnus sont rejetés.
+Plusieurs HTS10 partageant un même HS6 sont acceptés ; plusieurs HS6 distincts
+sont exclus car le benchmark attend une seule annotation. L'ordre source et les
+doublons sont conservés. Les codes doivent être admissibles dans le catalogue.
+
+Le CSV `benchmark/datasets/cross_rulings_test/data.csv` contient 172 lignes pour
+la révision et le catalogue actuels : 12 exclusions multi-HS6, 2 codes inconnus,
+14 formats d'en-tête non pris en charge. `data.report.json`, à côté du CSV,
+conserve les empreintes, les numéros de ligne source et les motifs de rejet.
+La source est conservée dans `data/cross_rulings/test.jsonl`. Ces données et le
+rapport restent locaux, ignorés par Git ; le script et le manifest sont suivis.
+
+**Limite de comparaison :** l'édition des annotations source n'est pas précisée.
+`edition: 2022` désigne ici le catalogue cible utilisé pour filtrer les codes,
+pas une certification ni une conversion historique des annotations. Leur
+exactitude sémantique n'a pas été auditée. Les résultats sur ce sous-ensemble
+ne sont pas directement comparables aux scores publiés sur les 200 exemples.
+
+Test du convertisseur sur quelques exemples synthétiques :
+`python -m unittest benchmark.test_prepare_cross_rulings -v`.
+
+### Dataset HSClassify (lignes anglaises)
+
+Source : [Mead0w1ark/HSClassify-benchmark](https://huggingface.co/datasets/Mead0w1ark/HSClassify-benchmark),
+fichier `benchmark_cases.csv`, révision figée `8672fb4eab2fc23b8a1322b4fdb14816138022eb`.
+
+```bash
+python benchmark/prepare_hsclassify.py --download
+python benchmark/benchmark.py import-dataset --dataset hsclassify_en
+python benchmark/benchmark.py run --dataset hsclassify_en --approach rag --limit 3
+```
+
+Les filtres sont `language == "en"` et l'admissibilité du code dans le catalogue :
+**53 lignes conservées sur les 58 anglaises** (78 lignes source).
+`expected_hs_code` devient `HS code` et
+`text` devient `description`, dans le CSV à deux colonnes séparées par `;`.
+Les codes sont lus comme chaînes (zéros initiaux conservés), les descriptions
+restent inchangées, tout comme l'ordre source et les doublons. Un code mal formé
+ou une description vide arrête la préparation au lieu d'exclure une ligne anglaise.
+Les catégories et notes sont conservées dans le rapport, jamais dans l'entrée modèle.
+
+Sortie : `benchmark/datasets/hsclassify_en/data.csv`, avec `data.report.json`
+(empreintes, révision de référence, correspondance des lignes et motifs de rejet).
+Source locale : `data/hsclassify/benchmark_cases.csv`. Ces fichiers de données
+restent ignorés par Git. Le téléchargement et les sorties refusent l'écrasement ;
+omettre `--download` pour réutiliser la source, et utiliser `--output` pour une
+nouvelle sortie. Aucun appel modèle n'est nécessaire à la préparation.
+
+Les **5 lignes avec codes absents du catalogue actuel sont exclues** et
+identifiées par leur numéro d'enregistrement source dans le rapport. L'édition source n'est pas spécifiée ; `edition: 2022`
+désigne le référentiel cible du moteur, sans conversion ni correction des
+annotations source. La présence d'un code dans le catalogue ne certifie pas
+l'exactitude de l'annotation source.
+
+Test ciblé : `python -m unittest benchmark.test_prepare_hsclassify -v`.
+
+### Commandes d'évaluation
+
 ```bash
 python benchmark/benchmark.py run --dataset hscodecomp --approach llm_direct --model qwen3 --limit 3
 python benchmark/benchmark.py run --dataset hscodecomp --approach embeddings --top-k 5 --limit 3

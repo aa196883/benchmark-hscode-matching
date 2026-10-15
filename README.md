@@ -82,6 +82,15 @@ L’alias `qwen3` désigne `Qwen/Qwen3-VL-4B-Instruct-FP8`. Le serveur doit acce
 
 ## Benchmarker avec MLflow
 
+HSClassify est également disponible : `python benchmark/prepare_hsclassify.py --download`
+prépare les lignes anglaises avec codes admissibles du dataset `hsclassify_en` au format CSV habituel.
+Voir les [commandes et limites](benchmark/README.md#dataset-hsclassify-lignes-anglaises).
+
+Le split test CROSS Rulings peut être préparé avec
+`python benchmark/prepare_cross_rulings.py --download`, puis importé comme
+`cross_rulings_test`. Filtrage et limites des annotations sont documentés dans
+[benchmark/README.md](benchmark/README.md#dataset-cross-rulings-split-test).
+
 Le benchmark possède sa CLI Python dans `benchmark/`, avec une expérience
 `hs-matching/<dataset>` et des versions de datasets sauvegardées dans MLflow.
 

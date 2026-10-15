@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "name": "hsclassify_en",
+  "csv": "data.csv",
+  "edition": "2022",
+  "language": "en"
+}

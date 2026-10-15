@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "name": "cross_rulings_test",
+  "csv": "data.csv",
+  "edition": "2022",
+  "language": "en"
+}
