@@ -132,3 +132,16 @@ Testcontainers et les ressources complètes sur le classpath suffisent côté ba
 Testcontainers récupère l’image automatiquement si elle manque.
 `-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated` vérifie toute la préparation et
 l’égalité des vecteurs sans appel payant ; le secret reste requis à l’initialisation.
+
+## Régénérer les vecteurs explicitement
+
+`src/test/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/Vectorizer.java`
+est un programme autonome : lancer son `main` avec le classpath de test (par exemple
+via l’IDE), `OPENAI_API_KEY` dans l’environnement et les arguments
+`DOSSIER_SORTIE [LIMITE]`. Le dossier doit être inexistant, son parent doit exister.
+Il utilise `HSCodeServiceImpl` et `text-embedding-3-small`, sans base PostgreSQL.
+Une limite de `2` permet un essai payant ciblé ; sans limite, tout le catalogue est
+vectorisé. `VectorizerTest` vérifie la structure sans appel API.
+Seule une génération complète fournit un index importable : remplacer ensemble
+`vectors.jsonl` et `manifest.json` dans les ressources `h6_2022`, puis reconstruire.
+L’import refuse de remplacer un index différent déjà présent en base.

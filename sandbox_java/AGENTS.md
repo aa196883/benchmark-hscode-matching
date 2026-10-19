@@ -76,6 +76,11 @@ Les tests sont sous le même package dans `src/test/java/`.
   de `HSCode` attendus par l’implémentation fournie, sans modifier les Java industriels.
 - `runner/.../local/lestr/sandbox/Main.java` et `RagMain.java` : CLI/assemblage local.
   `extension` ne doit ni importer le runner ni redéfinir les classes de `compat`.
+- `extension/src/test/java/.../analysis/ia/Vectorizer.java` : programme autonome de génération
+  explicite de `vectors.jsonl` et du manifeste depuis `HSCodeServiceImpl`, par lots de 64.
+  Arguments : nouveau dossier de sortie, limite optionnelle ; clé `OPENAI_API_KEY`.
+  Test de structure sans API dans le même package : `VectorizerTest`.
+  Lancer le `main` avec le classpath de test ; inclus dans les sources exportées, pas dans le JAR. Ne pas lancer le catalogue complet pour tester.
 - Contrat RAG : `HSCodeAnalysisService_v2` (recherche uniquement), `SearchResult_v2`
   et `Candidate_v2` sous `extension`, transférables. Ne pas modifier les contrats industriels v1.
   Aucun `analyse()`, délégué Completion ni score dans le parcours v2. `RagResult` et
