@@ -1,2 +1,8 @@
+{% if card.candidate.rating is defined and card.candidate.rating is not none %}
+<div class="confidence-rating" aria-label="Confiance {{ card.candidate.rating }} sur 5">
+<span class="rating-stars" aria-hidden="true">★★★★★<span style="width: {{ card.candidate.rating * 20 }}%">★★★★★</span></span>
+<span>Confiance {{ '%g'|format(card.candidate.rating) }}/5</span>
+</div>
+{% endif %}
 {% if card.retrieved %}<div class="retrieval-tags"><span>Rang initial #{{ card.retrieved.rank }}</span><span>Cosinus {{ '%.3f'|format(card.retrieved.score) }}</span></div>{% endif %}
-{% if card.candidate.explanation %}<div class="explanation"><span class="detail-label">CLASSEMENT SUR LES TEXTES FOURNIS</span><p>{{ card.candidate.explanation }}</p></div>{% endif %}
+{% if card.candidate.explanation %}<div class="explanation"><span class="detail-label">CONFIANCE DANS L’ADÉQUATION</span><p>{{ card.candidate.explanation }}</p></div>{% endif %}

@@ -120,6 +120,11 @@ class QwenTests(unittest.TestCase):
         retriever.retrieve.return_value = ([SearchHit('010121', 1, 1., 'Breeding horses', 'Animals > Breeding horses')], {})
         with patch('hs_matching.providers.qwen.urlopen') as network:
             network.return_value.__enter__.return_value = io.StringIO(json.dumps(response()))
+            raw = response()
+            answer = json.loads(raw['choices'][0]['message']['content'])
+            answer['candidates'][0]['rating'] = 5
+            raw['choices'][0]['message']['content'] = json.dumps(answer)
+            network.return_value.__enter__.return_value = io.StringIO(json.dumps(raw))
             prediction = RAG(QwenProvider('test'), ModelConfig(model=QWEN_MODEL), retriever, 1).predict(
                 'Live purebred breeding horses', 1, PredictionContext(catalog))
         self.assertEqual(prediction.status, 'ok')

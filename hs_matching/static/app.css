@@ -808,3 +808,7 @@ footer {
     width:100%
   }
 }
+
+.confidence-rating { display: flex; align-items: center; gap: .6rem; margin: .6rem 0; }
+.rating-stars { position: relative; display: inline-block; color: #cbd5e1; font-size: 1.25rem; white-space: nowrap; }
+.rating-stars > span { position: absolute; left: 0; top: 0; overflow: hidden; color: #a76500; }

@@ -33,7 +33,9 @@ class WebTests(unittest.TestCase):
         self.assertIn('0.46 s', html)
         self.assertIn('3.72 s', html)
         self.assertIn('Similarité cosinus', html)
-        self.assertIn('CLASSEMENT SUR LES TEXTES FOURNIS', html)
+        self.assertIn('Confiance 5/5', html)
+        self.assertIn('★★★★★', html)
+        self.assertIn('CONFIANCE DANS L’ADÉQUATION', html)
         download = self.client.get(response.location + '/download')
         self.assertEqual(download.status_code, 200)
         self.assertTrue(download.headers['Content-Disposition'].startswith('attachment'))
@@ -100,3 +102,18 @@ class WebTests(unittest.TestCase):
         self.assertEqual(response.status_code, 500)
         self.assertIn('sauvegarde a échoué', response.get_data(as_text=True))
         self.assertIn('610910', response.get_data(as_text=True))
+
+    def test_fractional_rating_and_legacy_result(self):
+        from flask import render_template
+        from hs_matching.web_presenters import rag_card
+        with self.app.app_context():
+            for rating in [4.25, None]:
+                candidate = {'code': '010121', 'explanation': 'Conditional fit'}
+                if rating is not None:
+                    candidate['rating'] = rating
+                html = render_template('cards/rag.html', card=rag_card(candidate, {}))
+                if rating is None:
+                    self.assertNotIn('rating-stars', html)
+                else:
+                    self.assertIn('width: 85.0%', html)
+                    self.assertIn('Confiance 4.25/5', html)

@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from hs_matching.approaches.base import PredictionContext
-from hs_matching.approaches.rag import RAG
+from hs_matching.approaches.rag import RAG, parse_answer
 from hs_matching.catalog import Catalog
 from hs_matching.cli import main
 from hs_matching.embedding_index import SearchHit, build_index
@@ -22,7 +22,7 @@ def response(codes, status='ok', missing=None):
     return {'status': 'completed', 'model': 'test-llm', 'usage': {'total_tokens': 42},
             'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps({
                 'status': status, 'missing_information': missing or [],
-                'candidates': [{'code': c, 'explanation': 'Supported by supplied description'} for c in codes]})}]}]}
+                'candidates': [{'code': c, 'explanation': 'Supported by supplied description', 'rating': 4.5} for c in codes]})}]}]}
 
 
 class RAGTests(unittest.TestCase):
@@ -59,8 +59,8 @@ class RAGTests(unittest.TestCase):
         self.assertEqual([c['code'] for c in data['candidates']], ['010121', '010129'])
         self.assertIn('Animals > Breeding horses', args['user_input'])
         self.assertNotIn('010130', args['user_input'])
-        self.assertIn('Use ONLY', args['instructions'])
-        self.assertIn('facts from training', args['instructions'])
+        self.assertIn('ceiling, never a target', args['instructions'])
+        self.assertIn('reliable ordinary product knowledge', args['instructions'])
         self.assertEqual(args['schema']['properties']['candidates']['items']['properties']['code']['enum'], ['010121', '010129'])
         self.assertEqual([c.code for c in result.candidates], ['010129', '010121'])
         self.assertIsNone(result.candidates[0].score)
@@ -107,7 +107,7 @@ class RAGTests(unittest.TestCase):
         self.assertEqual(result.missing_information, ['Intended use?'])
         self.assertEqual([candidate.code for candidate in result.candidates], ['010121'])
         self.provider.generate.return_value = response([], 'needs_info', ['Intended use?'])
-        self.assertEqual(self.predict().status, 'error')
+        self.assertEqual(self.predict().status, 'needs_info')
         raw = response([])
         raw['output'][0]['content'] = [{'type': 'refusal', 'refusal': 'Refused'}]
         self.provider.generate.return_value = raw
@@ -169,3 +169,26 @@ class RAGTests(unittest.TestCase):
                          '--env-file', str(self.root / 'absent')])
         self.assertEqual(code, 2)
         provider.assert_not_called()
+
+    def test_rating_validation_and_decimal_serialization(self):
+        self.assertEqual(self.predict().to_dict()['candidates'][0]['rating'], 4.5)
+        for rating in [None, True, '4', 0, 5.1, float('nan'), float('inf')]:
+            with self.subTest(rating=rating), self.assertRaises(ValueError):
+                parse_answer(json.dumps({'status': 'ok', 'missing_information': [],
+                    'candidates': [{'code': '010121', 'explanation': 'Conditional fit', 'rating': rating}]}))
+        for ratings in [[4, 5], [5, 4.5]]:
+            answer = {'status': 'ok', 'missing_information': [], 'candidates': [
+                {'code': code, 'explanation': 'Supported fit', 'rating': rating}
+                for code, rating in zip(['010121', '010129'], ratings)]}
+            if ratings == [4, 5]:
+                with self.assertRaises(ValueError):
+                    parse_answer(json.dumps(answer))
+            else:
+                self.assertEqual(parse_answer(json.dumps(answer)), answer)
+        self.provider.generate.return_value = response(['010121'])
+        self.assertEqual(len(self.predict().candidates), 1)
+
+    def test_missing_rating_is_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_answer(json.dumps({'status': 'ok', 'missing_information': [],
+                'candidates': [{'code': '010121', 'explanation': 'Supported'}]}))

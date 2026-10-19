@@ -19,10 +19,11 @@ def demo_run(approach, options):
     }
     scores = [0.894, 0.812, 0.746]
     if approach == 'rag':
-        codes = codes[:2]
+        codes = codes[:1]
     candidates = [Candidate(code, rank, descriptions[code],
                             score=scores[rank - 1] if approach == 'embeddings' else None,
                             score_type='cosine_similarity' if approach == 'embeddings' else 'none',
+                            rating=5 if approach == 'rag' else None,
                             explanation=None if approach == 'embeddings' else explanations[code])
                   for rank, code in enumerate(codes[:options['top_k']], 1)]
     metadata = {'approach': approach, 'config': {'model': 'text-embedding-3-small' if approach == 'embeddings' else options['model']},

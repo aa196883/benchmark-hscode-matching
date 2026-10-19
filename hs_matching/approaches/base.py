@@ -15,6 +15,7 @@ class Candidate:
     score_type: str = 'none'
     explanation: str | None = None
     references: list[str] = field(default_factory=list)
+    rating: float | None = None
 
 
 @dataclass

@@ -89,6 +89,10 @@ def main(argv=None):
             for candidate in prediction['candidates']:
                 score = '' if candidate['score'] is None else f"  [cosinus={candidate['score']:.4f}]"
                 print(f"  {candidate['rank']}. {candidate['code']}  {candidate['description']}{score}")
+                if candidate.get('rating') is not None:
+                    rating = candidate['rating']
+                    stars = '★' * int(rating) + ('◐' if rating % 1 else '') + '☆' * (5 - int(rating) - bool(rating % 1))
+                    print(f'     Confiance : {stars} {rating:g}/5')
                 if candidate['explanation']:
                     print(f"     {candidate['explanation']}")
             for question in prediction['missing_information']:
