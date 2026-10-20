@@ -8,7 +8,7 @@ Projet Python pour explorer et comparer des approches d’inférence de codes HS
 | `embeddings` | Recherche cosinus sur les descriptions contextualisées du catalogue. |
 | `rag` | Récupération de K voisins, puis sélection et classement par un LLM parmi ces candidats. |
 
-Les résultats comprennent des candidats ordonnés, leurs libellés, des explications ou scores selon l’approche, et éventuellement une demande de précisions ; le RAG sélectionne jusqu’à N candidats compatibles, sans remplissage, et utilise `needs_info` si des précisions sont nécessaires. Les scores cosinus ne sont pas des probabilités de justesse.
+Les résultats comprennent des candidats ordonnés, leurs libellés, des explications ou scores selon l’approche, et éventuellement une demande de précisions ; le RAG vise N candidats pour une marchandise identifiée, en complétant les correspondances par des alternatives proches qui nécessiteraient une petite modification de la description, explicitée avec un rating plus faible. Il peut en retourner moins si les voisins récupérés ne suffisent pas. Pour une description imprécise, il conserve les candidats provisoires compatibles et utilise `needs_info` si des précisions sont nécessaires. Les scores cosinus ne sont pas des probabilités de justesse.
 
 ## Installation
 
@@ -144,4 +144,6 @@ PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright python scripts/snapshot_web.py
 
 Les quatre captures desktop/mobile sont écrites dans `artifacts/screenshots/`.
 
-Le RAG (`rag_v3`) fournit un `rating` requis par candidat généré, nombre de 1 à 5 (décimales admises), indépendant du score cosinus et des autres candidats. Le classement suit les ratings décroissants, sans renumérotation après rejet. Les explications précisent la confiance et les conditions manquantes. CLI et UI affichent des étoiles et la valeur exacte ; `rating=null` pour les approches sans rating. Un refus fournisseur ne fabrique ni candidat ni rating.
+Pour une marchandise identifiée avec une correspondance étayée, le RAG vise `top_k` en ajoutant les alternatives récupérées les plus proches, applicables après une petite modification explicitée de la description, avec un rating inférieur plafonné à 3. Ces alternatives seules ne déclenchent pas `needs_info`. Le nombre peut rester inférieur à `top_k` si le pool ne contient pas assez d’alternatives proches ; les marchandises sans rapport restent exclues.
+
+Le RAG (`rag_v4`) fournit un `rating` requis par candidat généré, nombre de 1 à 5 (décimales admises), indépendant du score cosinus et des autres candidats. Le classement suit les ratings décroissants, sans renumérotation après rejet. Les explications précisent la confiance et les conditions manquantes. CLI et UI affichent des étoiles et la valeur exacte ; `rating=null` pour les approches sans rating. Un refus fournisseur ne fabrique ni candidat ni rating.
