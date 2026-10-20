@@ -1,104 +1,87 @@
-# Guide de travail
+# Guide des agents
 
-## Finalité et périmètre
+## Objectif et périmètre
 
-Explorer et benchmarquer des approches permettant d’inférer des codes HS à partir de descriptions de marchandises. Le moteur actuel cible des descriptions anglaises et le HS international 2022 à six chiffres : LLM direct, embeddings et RAG. CLI, interface Flask, évaluation de datasets CSV et suivi MLflow sont disponibles.
+Comparer des approches d’inférence de codes HS à partir de descriptions de marchandises **en anglais**, sur le **HS international 2022 à six chiffres**. Le moteur commun sert le LLM direct, les embeddings et le RAG ; les interfaces comprennent une CLI, Flask, des rapports HTML et le benchmark MLflow.
 
-**Ne pas explorer, lire, rechercher dans ou modifier `sandbox_java/`, sauf demande explicite de l’utilisateur.** Exclure ce dossier des recherches globales, par exemple `rg --files -g '!sandbox_java'` ou `rg -n 'motif' hs_matching scripts benchmark tests traitement_csv`.
+**`sandbox_java/` est hors périmètre : ne pas l’explorer, le lire, y rechercher ou le modifier sans demande explicite.** Pour une recherche globale, utiliser `rg --files -g '!sandbox_java'` ; préférer les répertoires ciblés de la carte ci-dessous.
 
-## Économie de contexte et autonomie
+## Méthode de travail
 
-1. Lire d’abord les fichiers explicitement mentionnés dans le prompt, sous réserve de la restriction sur `sandbox_java/` et de la confidentialité des secrets.
-2. Si nécessaire, consulter ensuite `README.md` et la documentation locale du composant concerné.
-3. Explorer seulement ensuite les fichiers utiles, avec des recherches ciblées (`rg`, plages de lignes). Utiliser la carte ci-dessous ; ne pas refaire un audit global à chaque tâche.
-4. Ne pas charger en masse les datasets, index vectoriels, runs, captures, environnements ou fichiers générés. Limiter les sorties des commandes et éviter les relectures sans raison.
-5. Les appels API payants nécessaires à la tâche sont autorisés par défaut, sauf indication contraire dans le prompt. Ne pas redemander une autorisation du seul fait qu’ils sont facturables. Respecter les modèles, volumes et limites demandés ; éviter les répétitions inutiles.
-6. Lancer uniquement les tests pertinents pour le changement. Élargir aux composants dépendants si le contrat partagé change ; ne pas lancer systématiquement toutes les suites. Pour une modification documentaire, vérifier les commandes et liens concernés suffit généralement.
-7. Ne jamais afficher ni versionner les clés de `.env`. Préserver les modifications utilisateur déjà présentes. Mettre à jour cette carte et le README lorsque le fonctionnement change, sans ajouter de bilan historique.
+- Lire les fichiers cités dans la demande, puis la documentation du composant si nécessaire. Cibler les recherches et les plages de lecture ; les datasets, index, runs et environnements sont volumineux.
+- Préserver les modifications utilisateur. Garder les secrets de `.env` hors des sorties et de Git ; les variables d’environnement sont prioritaires.
+- Les appels API payants nécessaires sont autorisés par défaut. Respecter les modèles et volumes demandés, limiter les essais réels à quelques descriptions et utiliser `--limit` dans le benchmark.
+- Réutiliser les approches, fournisseurs et retriever communs. Mettre à jour le README et cette carte quand les points d’entrée ou les contrats changent.
+- Vérifier les composants modifiés avec les tests ciblés ; élargir aux consommateurs lorsqu’un contrat partagé change. Pour la documentation, vérifier les commandes et chemins concernés.
 
 ## Carte du code
 
-| Chemin | Responsabilité / point d’entrée |
+| Besoin | Fichiers à consulter |
 | --- | --- |
-| `hs_matching/approaches/base.py`, `registry.py` | Contrat `predict(query, top_k, context) -> Prediction`, dataclasses et registre des trois approches. |
-| `hs_matching/approaches/{llm_direct,embeddings,rag}.py` | Prédiction, prompts et validation ; prompts direct et RAG indépendants et versionnés. |
-| `hs_matching/providers/{openai,qwen}.py` | Génération HTTP, `ModelConfig`, erreurs et adaptation Qwen à l’enveloppe commune. |
-| `hs_matching/vectorization/` | Contrat `Vectorizer`, configuration et transport OpenAI embeddings. |
-| `hs_matching/catalog.py`, `embedding_index.py` | Catalogue, admissibilité, construction explicite et intégrité de l’index, recherche cosinus NumPy et retriever partagé. |
-| `hs_matching/experiments.py`, `cli.py`, `config.py` | Exécution et traces détaillées, CLI, lecture `.env` (environnement prioritaire). |
-| `hs_matching/web.py`, `web_runner.py` | Routes Flask, validation, exécution séquentielle et cache mémoire catalogue/index. |
-| `hs_matching/web_presenters.py`, `templates/`, `static/`, `demo.py` | Présentation par approche, Jinja, CSS/JS sans compilation, fixtures sans API. |
-| `scripts/` | `preprocess_h6.py` : référentiel ; `build_embeddings.py` : index ; `snapshot_web.py` : captures Playwright. |
-| `benchmark/prepare_hscodecomp.py` | Extraction titre + HS6 de HSCodeComp vers CSV. |
-| `benchmark/prepare_cross_rulings.py` | Téléchargement explicite du split test CROSS figé, extraction description/HS6 unique admissible, CSV ordonné et rapport de provenance/rejets. Tests : `benchmark/test_prepare_cross_rulings.py`. |
-| `benchmark/prepare_hsclassify.py` | Extraction des lignes `language=en` de HSClassify avec HS6 admissible, codes/descriptions inchangés, rapport de provenance et rejets catalogue. Tests : `benchmark/test_prepare_hsclassify.py`. |
-| `benchmark/benchmark.py`, `cli.py`, `__main__.py` | CLI Python autonome MLflow : `run --model` (modèle résolu dans noms de runs et traces), `import-dataset`, `datasets`, `ui`. Voir `benchmark/README.md`. |
-| `benchmark/datasets.py`, `datasets/*/manifest.json`, `tracking.py` | Datasets HS6, versions stockées dans MLflow Evaluation Datasets, une expérience `hs-matching/<nom>`, SQLite par défaut. |
-| `benchmark/runtime.py`, `runner.py`, `traces.py`, `metrics.py` | Adaptation du moteur, exécution séquentielle, traces MLflow natives par ligne avec scores, artifacts/checkpoints, métriques de classement/latence/tokens. |
-| `traitement_csv/traiter.py` | Inférence RAG avec checkpoints, puis remplacement des descriptions par les libellés du catalogue ; documentation locale dans `traitement_csv/README.md`. |
-| `tests/`, `benchmark/test_*.py`, `traitement_csv/test_traiter.py` | Tests `unittest`, fournisseurs simulés, sans appels API réels. |
-| `data/`, `artifacts/`, `runs/`, `benchmark/runs/` | Données, index/captures et résultats locaux ignorés par Git. Le stockage `benchmark/mlflow.db`, `mlartifacts/`, les CSV et runs sont ignorés ; scripts, documentation, requirements et manifests sont suivis. |
-| `sandbox_java/` | Hors périmètre, sauf demande explicite ; contenu et versions non audités. |
+| Contrat de prédiction et registre | `hs_matching/approaches/base.py`, `registry.py` : `predict(query, top_k, context) -> Prediction`. |
+| Prompts et validation | `hs_matching/approaches/{llm_direct,embeddings,rag}.py` ; prompts direct et RAG indépendants et versionnés. |
+| Génération LLM | `hs_matching/providers/{openai,qwen}.py` : transport HTTP, `ModelConfig`, erreurs. |
+| Vectorisation et recherche | `hs_matching/vectorization/`, `catalog.py`, `embedding_index.py` : admissibilité, intégrité de l’index, cosinus NumPy, retriever. |
+| CLI et traces locales | `hs_matching/cli.py`, `experiments.py`, `config.py`. |
+| Interface Flask | `hs_matching/web.py`, `web_runner.py` : routes, validation, exécution séquentielle, cache catalogue/index. |
+| Présentation et démo | `hs_matching/web_presenters.py`, `templates/`, `static/`, `demo.py` : Jinja, CSS/JS, fixtures sans API. |
+| Rapport HTML RAG | `scripts/render_rag_report.py`, `scripts/rag_descriptions.csv`, `hs_matching/templates/rag_report.html` : script sans paramètres, constantes modèle/K/N, sortie autonome `artifacts/rag_report.html`. |
+| Préparation et captures | `scripts/preprocess_h6.py`, `build_embeddings.py`, `snapshot_web.py`. |
+| Préparation des datasets | `benchmark/prepare_{hscodecomp,cross_rulings,hsclassify}.py` et leurs tests : extraction description/HS6, admissibilité, provenance et rejets. |
+| CLI benchmark | `benchmark/README.md`, `benchmark/{benchmark,cli,__main__}.py` : `run`, `import-dataset`, `datasets`, `ui`. |
+| Versions de datasets | `benchmark/datasets.py`, `datasets/*/manifest.json`, `tracking.py` : MLflow Evaluation Datasets, stockage SQLite par défaut. |
+| Exécution et métriques MLflow | `benchmark/{runtime,runner,traces,metrics}.py` : traces par ligne, checkpoints, classement, latence et tokens. |
+| Traitement CSV RAG | `traitement_csv/README.md`, `traiter.py`, `test_traiter.py` : inférence avec checkpoints puis remplacement par les libellés du catalogue. |
+| Tests | `tests/test_*.py`, `benchmark/test_*.py`, `traitement_csv/test_traiter.py` : `unittest`, fournisseurs simulés. |
+| Données et sorties locales | `data/`, `artifacts/`, `runs/`, `benchmark/runs/`, base et artifacts MLflow : ignorés par Git. Consulter `.gitignore` pour les exceptions suivies. |
 
-## Outils et versions
+## Contrats métier
 
-Sources de vérité : `pyproject.toml`, `requirements.txt`, `requirements-dev.txt`, `benchmark/requirements.txt` ; aucun lockfile. Ne pas confondre plages compatibles et versions installées.
+### Prédictions
 
-| Outil | Version déclarée | Observée dans `.venv` lors de l’audit du 2026-10-09 |
-| --- | --- | --- |
-| Python | `>=3.10` | `3.12.3` |
-| Flask | `>=3.1,<4` | `3.1.3` |
-| NumPy | `>=1.24,<3` | `2.5.3` |
-| Playwright (captures facultatives) | `>=1.50,<2` | `1.62.0` |
-| setuptools (build) | `>=68` | Non installé dans `.venv` ; build isolé possible via pip. |
-| pip | Non fixé | `24.0` |
-| MLflow (benchmark) | `>=3.16,<4` | `3.16.0` |
+- Les codes sont des chaînes préservant les zéros initiaux. Valider format, existence, admissibilité, unicité et limite N. Garder les rangs d’origine après rejet.
+- Les libellés affichés viennent du catalogue. Préserver statuts, informations manquantes et erreurs propres à chaque approche (`ok`, `needs_info`, `abstained`, `error`). Les scores cosinus représentent une proximité, pas une probabilité.
+- L’inférence utilise un index déjà construit. Une modification des codes ou descriptions contextualisées exige une reconstruction explicite dans un nouveau dossier. Les fournisseurs exécutent un appel sans retry ni substitution automatique de modèle.
+- Les interfaces utilisent le moteur commun ; Flask exécute les approches successivement. Échapper les descriptions et réponses dans les rendus HTML.
 
-Package `hs-matching` : `0.1.0`. `unittest` et transports HTTP `urllib` viennent de Python ; aucun SDK OpenAI ni chaîne Node/npm. `pip install -e .` seul n’installe pas Flask/NumPy : utiliser les requirements ou les extras `.[web]`, `.[embeddings]`, `.[visual]`, `.[benchmark]` selon le besoin. Le benchmark s’installe aussi via `pip install -r benchmark/requirements.txt`.
+### RAG
 
-Modèles configurés dans le code : `gpt-4.1-mini` par défaut (surcharge `OPENAI_MODEL`/`--model`), `text-embedding-3-small` pour construire un index, alias `qwen3` → `Qwen/Qwen3-VL-4B-Instruct-FP8`. Ce sont des choix du projet, pas des garanties de disponibilité ni des snapshots figés. Qwen est routé dans les CLI d’inférence et benchmark ; la GUI utilise OpenAI.
+- Sélectionner uniquement des codes récupérés, avec `retrieval_k >= top_k`. Les statuts métier sont `ok` et `needs_info` ; les échecs techniques utilisent `error`.
+- Marchandise identifiée : viser `top_k` en complétant les correspondances par des alternatives proches qui nécessitent une petite modification explicitée de la description. Ces alternatives seules ne déclenchent pas `needs_info`. Le pool peut contenir moins d’alternatives pertinentes que demandé.
+- Description imprécise : conserver des candidats provisoires compatibles avec les attributs connus, demander les précisions utiles et attribuer des notes faibles. Une liste vide est possible si aucun candidat ne convient ou si le fournisseur refuse.
+- `rag_v4` requiert un `rating` numérique de 1 à 5, décimales admises, indépendant du cosinus et des autres candidats. Le prompt demande un plafond de 3 aux alternatives contrefactuelles. Trier par rating décroissant ; expliquer la confiance et les conditions ou modifications nécessaires.
+- Afficher les étoiles et la valeur exacte. Les autres approches ont `rating=null` ; un refus fournisseur conserve une liste vide.
 
-## Commandes utiles
+### Benchmark
 
-Depuis la racine, utiliser `.venv/bin/python` ou activer `.venv` puis utiliser `python`. Installation et commandes d’inférence complètes : `README.md`.
+- Une expérience `hs-matching/<dataset>`, un run par approche/configuration/sélection. Préserver versions importées, empreintes, ordre et doublons ; identifier le modèle résolu dans les noms de runs et les traces.
+- Créer une trace native MLflow par ligne tentée, liée au run, avec code attendu, réponse et scores individuels. Vérifier l’export et conserver le `trace_id`. Une trace interrompue ne constitue pas une prédiction terminée.
+- Enregistrer les résultats après chaque ligne dans MLflow et les checkpoints `benchmark/runs/`. Les statuts et tags distinguent succès, erreur, interruption et sous-ensemble.
+- Calculer les métriques sur tous les candidats `ok`/`needs_info`, en gardant les erreurs et abstentions au dénominateur. Exclure les tokens inconnus des moyennes.
+
+## Environnement et vérification
+
+Utiliser `.venv/bin/python` depuis la racine. Les dépendances déclarées dans `pyproject.toml`, `requirements.txt`, `requirements-dev.txt` et `benchmark/requirements.txt` font référence ; vérifier les versions installées uniquement si nécessaire. Python >=3.10, transports HTTP `urllib`, tests `unittest`, frontend Jinja/CSS/JS.
 
 ```bash
-python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m hs_matching approaches
 .venv/bin/python -m hs_matching predict --help
 .venv/bin/python benchmark/benchmark.py --help
 .venv/bin/python -m hs_matching.web --demo
+.venv/bin/python scripts/render_rag_report.py
 ```
 
-Sélectionner la commande correspondant à la modification, pas tout le bloc :
+Configuration des modèles : `gpt-4.1-mini` par défaut, surcharge `OPENAI_MODEL`/`--model` dans les CLI ; `text-embedding-3-small` pour construire un index ; alias `qwen3` → `Qwen/Qwen3-VL-4B-Instruct-FP8`. Flask utilise OpenAI ; le rapport HTML utilise les constantes de son script.
+
+Exécuter uniquement la suite concernée, par exemple :
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -p 'test_llm_direct.py' -v
-.venv/bin/python -m unittest discover -s tests -p 'test_embeddings.py' -v
 .venv/bin/python -m unittest discover -s tests -p 'test_rag.py' -v
-.venv/bin/python -m unittest discover -s tests -p 'test_qwen.py' -v
-.venv/bin/python -m unittest discover -s tests -p 'test_web.py' -v
-.venv/bin/python -m unittest discover -s tests -p 'test_preprocess_h6.py' -v
+.venv/bin/python -m unittest discover -s tests -p 'test_rag_report.py' -v
 .venv/bin/python -m unittest benchmark.test_benchmark -v
 .venv/bin/python -m unittest discover -s traitement_csv -p 'test_traiter.py' -v
 ```
 
-Les tests de prétraitement nécessitent `data/H6.json` (ou `H6.json` à la racine) ; les tests LLM direct et certains tests Qwen nécessitent `data/processed/h6_2022/catalog.jsonl`. Préparer ce catalogue au besoin avec `python scripts/preprocess_h6.py --input data/H6.json`. Un échec pour données manquantes n’est pas une régression métier. Les tests embeddings/RAG utilisent des petits index temporaires ; aucune reconstruction payante de l’index complet n’est nécessaire pour eux.
+Les suites `test_llm_direct.py`, `test_embeddings.py`, `test_qwen.py`, `test_web.py` et `test_preprocess_h6.py` utilisent la même commande `discover`. Le prétraitement exige `data/H6.json` (ou `H6.json` à la racine) ; le LLM direct et certains tests Qwen exigent le catalogue préparé. Au besoin : `.venv/bin/python scripts/preprocess_h6.py --input data/H6.json`. Les tests embeddings/RAG construisent de petits index temporaires avec fournisseurs simulés.
 
-Pour un changement visuel, si pertinent : installer `requirements-dev.txt`, puis `PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python -m playwright install chromium` et `PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python scripts/snapshot_web.py`.
-
-## Invariants à préserver
-
-- Conserver les codes comme chaînes, avec zéros initiaux. Valider format, existence, admissibilité, doublons et limite N. Ne pas corriger silencieusement les codes ni compacter les rangs après rejet.
-- Préserver `ok`, `needs_info`, `abstained`, `error`, les informations manquantes et les erreurs selon les approches. Le RAG n’utilise plus `abstained` : pour une description imprécise, il conserve uniquement des candidats provisoires non contradictoires avec `needs_info` ; la liste peut être vide si aucun candidat n’est compatible ou si le fournisseur refuse. Les libellés affichés proviennent du catalogue ; les scores cosinus ne sont pas des probabilités.
-- Le RAG ne peut retenir que les candidats récupérés, avec `retrieval_k >= top_k`. Son prompt, son schéma et sa validation sont distincts du LLM direct.
-- Aucun précalcul implicite à l’inférence. Un index existant n’est pas écrasé ; une modification des codes/descriptions contextualisées impose une reconstruction explicite. Pas de retry ni de substitution automatique de modèle dans les fournisseurs actuels.
-- Réutiliser les approches et le retriever communs dans les interfaces. La GUI exécute les approches successivement et échappe les textes via Jinja.
-- Le benchmark est indépendant de la CLI d’inférence : une expérience MLflow par dataset, un run par approche/configuration/sélection. Préserver les versions importées, leurs empreintes, l’ordre et les doublons. Toujours utiliser `--limit` pour un essai réel ciblé ; ne pas traiter tout le dataset pour valider un changement.
-- Créer une trace native MLflow par ligne tentée, liée au run, avec code attendu, réponse et scores individuels. Vérifier son export ; conserver son `trace_id` dans les résultats. Les traces interrompues ne comptent pas comme prédictions terminées.
-- Conserver les résultats après chaque ligne dans MLflow et les checkpoints `benchmark/runs/`. Les métriques portent sur tous les candidats `ok`/`needs_info` ; les erreurs et abstentions des approches qui les utilisent restent au dénominateur et les tokens inconnus sont exclus des moyennes. Les statuts et tags distinguent succès, erreur, interruption et sous-ensemble.
-
-Pour une marchandise identifiée avec une correspondance étayée, le RAG vise `top_k` en ajoutant les alternatives récupérées les plus proches, applicables après une petite modification explicitée de la description, avec un rating inférieur plafonné à 3. Ces alternatives seules ne déclenchent pas `needs_info`. Le nombre peut rester inférieur à `top_k` si le pool ne contient pas assez d’alternatives proches ; les marchandises sans rapport restent exclues.
-
-Le RAG (`rag_v4`) fournit un `rating` requis par candidat généré, nombre de 1 à 5 (décimales admises), indépendant du score cosinus et des autres candidats. Le classement suit les ratings décroissants, sans renumérotation après rejet. Les explications précisent la confiance et les conditions manquantes. CLI et UI affichent des étoiles et la valeur exacte ; `rating=null` pour les approches sans rating. Un refus fournisseur ne fabrique ni candidat ni rating.
+Pour vérifier l’UI, les outils sont dans `requirements-dev.txt` : installer Chromium avec `PLAYWRIGHT_BROWSERS_PATH=/tmp/hs-playwright .venv/bin/python -m playwright install chromium`, puis utiliser `scripts/snapshot_web.py`. Installation, inférence et benchmark détaillés : `README.md` et `benchmark/README.md`.

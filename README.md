@@ -70,6 +70,18 @@ Les runs détaillés sont enregistrés dans `runs/` avec configurations, prompts
 
 La GUI Flask compare successivement les approches sélectionnées, conserve catalogue/index en mémoire et propose un export JSON dans `runs/web/`. Son temps total par approche comprend la préparation des ressources et l’inférence. La génération dans la GUI utilise OpenAI.
 
+### Rapport HTML RAG
+
+Modifier [`scripts/rag_descriptions.csv`](scripts/rag_descriptions.csv) : une colonne `description`, une description anglaise par ligne. Entourer de guillemets les descriptions contenant des virgules. L’ordre et les doublons sont conservés ; les lignes vides sont ignorées.
+
+```bash
+.venv/bin/python scripts/render_rag_report.py
+```
+
+Ce script indépendant de la CLI ne prend aucun paramètre. Les constantes `MODEL`, `RETRIEVAL_K` et `TOP_K` dans le script valent `gpt-4.1-mini`, `20` et `5`. Il utilise `.env`, le catalogue et l’index existants aux chemins par défaut, puis effectue les appels API pour chaque description.
+
+Le fichier **`artifacts/rag_report.html`** est remplacé à chaque exécution. Il s’ouvre directement dans un navigateur et peut être partagé seul : les styles de l’UI sont intégrés. Il présente la configuration, puis les codes, libellés, ratings et explications de chaque description, ainsi que les demandes de précisions ou erreurs. Le script termine avec le code `1` si une prédiction échoue, tout en produisant le rapport des résultats obtenus. Les chemins sont résolus depuis le dépôt, quel que soit le dossier de lancement.
+
 ### Qwen dans les CLI
 
 Avec un tunnel SSH déjà ouvert, configurer `LOCAL_QWEN_KEY` et éventuellement `QWEN_BASE_URL` (défaut : `http://localhost:8000/v1`) :

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>HS Lab · Résultats RAG</title>
+  <style>{{ app_css|safe }}</style>
+  <style>
+    main { max-width: 1120px; }
+    .report-settings { display: flex; flex-wrap: wrap; gap: 24px 48px; padding: 22px 26px; margin: 0 0 36px; background: white; border: 1px solid var(--line); border-radius: 10px; }
+    .report-settings dt { color: var(--muted); font-size: 12px; }
+    .report-settings dd { margin: 4px 0 0; font-size: 20px; font-weight: 600; }
+    .description-block { margin-bottom: 38px; }
+    .description-block h2 { margin: 8px 0; font-size: 24px; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .report-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .report-cards .candidate-card { margin: 0; }
+    .report-empty { color: var(--muted); }
+    @media (max-width: 650px) { .report-cards { grid-template-columns: 1fr; } .edition { display: none; } }
+    @media print { body { background: white; } main { padding: 20px 0; } .candidate-card, .column-header, .state-card { break-inside: avoid; } .column-header { break-after: avoid; } }
+  </style>
+</head>
+<body>
+<header class="topbar"><div class="brand"><span class="brand-icon">HS</span><span>Classification <b>Lab</b></span></div><div class="edition">HS 2022 <span class="divider">/</span> Catalogue anglais</div></header>
+<main>
+  <div class="intro"><div><div class="eyebrow">SUGGESTIONS DE CLASSIFICATION</div><h1>Résultats RAG</h1><p>{{ results|length }} description{{ 's' if results|length != 1 else '' }} · Codes proposés, confiance et explications.</p></div></div>
+  <dl class="report-settings" aria-label="Configuration"><div><dt>Modèle</dt><dd>{{ model }}</dd></div><div><dt>Voisins</dt><dd>{{ retrieval_k }}</dd></div><div><dt>Top k</dt><dd>{{ top_k }}</dd></div></dl>
+  {% for result in results %}
+  {% set prediction = result.prediction %}
+  <section class="description-block rag" aria-labelledby="description-{{ loop.index }}">
+    <header class="column-header">
+      <div class="column-title"><span class="method-symbol">{{ '%02d'|format(loop.index) }}</span><span class="eyebrow">DESCRIPTION</span><span class="status {{ prediction.status }}">{{ status_labels[prediction.status] }}</span></div>
+      <h2 id="description-{{ loop.index }}">{{ result.description }}</h2>
+      <div class="column-stats">{{ prediction.candidates|length }} candidat{{ 's' if prediction.candidates|length != 1 else '' }}</div>
+    </header>
+    {% if prediction.error %}<div class="state-card error"><h4>Classification indisponible</h4><p>{{ prediction.error.message }}</p></div>{% endif %}
+    {% if prediction.missing_information %}<div class="state-card needs-info"><h4>Précisions nécessaires</h4><ul>{% for question in prediction.missing_information %}<li>{{ question }}</li>{% endfor %}</ul></div>{% endif %}
+    <div class="report-cards">
+      {% for candidate in prediction.candidates %}
+      <article class="candidate-card">
+        <div class="card-top"><span class="rank">{{ '%02d'|format(candidate.rank) }}</span><span class="hs-code">{{ candidate.code }}</span><span class="code-label">HS 2022</span></div>
+        <h4>{{ candidate.description }}</h4>
+        {% set card = {'candidate': candidate, 'retrieved': none} %}
+        {% include 'cards/rag.html' %}
+      </article>
+      {% else %}{% if not prediction.error %}<p class="report-empty">Aucun candidat proposé.</p>{% endif %}{% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <footer><span>HS LAB <span class="divider">/</span> Classification de marchandises</span><span>Référentiel HS 2022 · EN</span></footer>
+</main>
+</body>
+</html>
