@@ -19,4 +19,4 @@ if [[ -d "$sandbox_root/extension/src/test" ]]; then source_paths+=(src/test); f
 tar -czf "$sandbox_root/extension/target/transferable-sources.tar.gz" -C "$sandbox_root/extension" "${source_paths[@]}"
 (cd "$sandbox_root/extension/target" && sha256sum transferable-sources.tar.gz > transferable-sources.tar.gz.sha256)
 echo "Archive de sources à examiner : $sandbox_root/extension/target/transferable-sources.tar.gz"
-echo 'Extraire dans un répertoire de revue puis copier uniquement les nouveaux fichiers dans le module industriel cible.'
+echo 'Extraire dans un répertoire de revue puis remplacer les sources et contrats correspondants dans le module industriel cible (voir INTEGRATION.md).'

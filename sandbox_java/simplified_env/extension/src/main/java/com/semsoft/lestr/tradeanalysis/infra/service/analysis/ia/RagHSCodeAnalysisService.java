@@ -1,9 +1,10 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
+import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.Candidate;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.*;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
-import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService_v2;
+import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeAnalysisService;
 import com.semsoft.lestr.tradeanalysis.domain.spi.HSCodeService;
 import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import java.io.*;
@@ -13,18 +14,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** RAG v2: complete search results, without confidence scores or analysis delegation. */
-public final class RagHSCodeAnalysisService implements HSCodeAnalysisService_v2 {
+/** RAG rag_v4: complete search results, with independent confidence ratings. */
+public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
     public static final int DEFAULT_RETRIEVAL_K = 20;
-    private static final String PROMPT = resource("rag_v2.txt");
-    private static final JsonNode SCHEMA = parse(resource("rag_v2.schema.json"));
+    private static final String PROMPT = resource("rag_v4.txt");
+    private static final JsonNode SCHEMA = parse(resource("rag_v4.schema.json"));
     private final PrecomputedEmbeddingIndex index;
     private final RagEmbeddingClient embeddings;
-    private final RagGenerationClient_v2 generation;
+    private final RagGenerationClient generation;
     private final int retrievalK;
 
     public RagHSCodeAnalysisService(PrecomputedEmbeddingIndex index, RagEmbeddingClient embeddings,
-                                   RagGenerationClient_v2 generation, int retrievalK) {
+                                   RagGenerationClient generation, int retrievalK) {
         this.index = Objects.requireNonNull(index);
         this.embeddings = Objects.requireNonNull(embeddings);
         this.generation = Objects.requireNonNull(generation);
@@ -43,13 +44,13 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService_v2 
     public static PrecomputedEmbeddingIndex loadIndex(DataSource datasource, HSCodeService hsCodeService) throws IOException, SQLException {
         return new PrecomputedEmbeddingIndex(datasource, PrecomputedIndexResources.packaged(hsCodeService));
     }
-    @Override public SearchResult_v2 searchFromDescription(String description) {
+    @Override public SearchResult searchFromDescription(String description) {
         return searchDetailed(description);
     }
     @Override public Source getSource() { return Source.OpenAI_Hybrid; }
-    public SearchResult_v2 searchDetailed(String description) { return searchDetailed(description, NB_MAX_RESULTS); }
+    public SearchResult searchDetailed(String description) { return searchDetailed(description, NB_MAX_RESULTS); }
 
-    public SearchResult_v2 searchDetailed(String description, int topK) {
+    public SearchResult searchDetailed(String description, int topK) {
         require(description != null && !description.isBlank() && topK > 0, "Non-empty description and positive topK required");
         require(retrievalK >= topK, "retrievalK must be >= topK");
         var hits = index.search(embeddings.embed(description), retrievalK);
@@ -66,36 +67,31 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService_v2 
                 .put("contextual_description", index.contextualDescription(hit));
         String instructions = PROMPT.replace("{top_k}", Integer.toString(topK));
         var generated = generation.generate(instructions, encode(input), schema);
-        if (generated instanceof RagGenerationClient_v2.Refusal) {
-            var provisional = new ArrayList<Candidate_v2>();
-            for (int i = 0; i < Math.min(topK, hits.size()); i++) {
-                var hit = hits.get(i);
-                provisional.add(new Candidate_v2(hit.hsCode().toDigits(), i + 1, hit.description(), null));
-            }
-            return new SearchResult_v2(getSource(), SearchResult_v2.Status.NEEDS_INFO, provisional, List.of(
+        if (generated instanceof RagGenerationClient.Refusal) {
+            return new SearchResult(getSource(), SearchResult.Status.NEEDS_INFO, List.of(), List.of(
                     "Which material, composition, physical form, processing, or intended use best describes the merchandise?"));
         }
-        if (!(generated instanceof RagGenerationClient_v2.Answer generatedAnswer))
+        if (!(generated instanceof RagGenerationClient.Answer generatedAnswer))
             throw new HSCodeAnalysisException("Missing RAG generation result");
         Answer answer = parseAnswer(generatedAnswer.text());
 
-        var candidates = new ArrayList<Candidate_v2>();
+        var candidates = new ArrayList<Candidate>();
         var seen = new HashSet<String>();
         for (int i = 0; i < Math.min(topK, answer.candidates().size()); i++) {
             var item = answer.candidates().get(i);
             if (allowed.containsKey(item.code()) && seen.add(item.code())) {
-                candidates.add(new Candidate_v2(item.code(), i + 1,
-                        allowed.get(item.code()).description(), item.explanation()));
+                candidates.add(new Candidate(item.code(), i + 1,
+                        allowed.get(item.code()).description(), item.explanation(), item.rating()));
             }
         }
         if (!answer.candidates().isEmpty() && candidates.isEmpty())
             throw new HSCodeAnalysisException("All proposed codes were rejected");
-        return new SearchResult_v2(getSource(), answer.status().equals("ok")
-                ? SearchResult_v2.Status.OK : SearchResult_v2.Status.NEEDS_INFO, candidates, answer.missingInformation());
+        return new SearchResult(getSource(), answer.status().equals("ok")
+                ? SearchResult.Status.OK : SearchResult.Status.NEEDS_INFO, candidates, answer.missingInformation());
     }
     private record Answer(String status, List<String> missingInformation,
                           List<AnswerCandidate> candidates) {}
-    private record AnswerCandidate(String code, String explanation) {}
+    private record AnswerCandidate(String code, String explanation, double rating) {}
 
     private static Answer parseAnswer(String text) {
         try {
@@ -105,19 +101,23 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService_v2 
             if (!status.isTextual() || !Set.of("ok", "needs_info").contains(status.textValue())) invalidAnswer();
             var missing = root.get("missing_information");
             var items = root.get("candidates");
-            if (!missing.isArray() || !items.isArray() || items.isEmpty()) invalidAnswer();
+            if (!missing.isArray() || !items.isArray()) invalidAnswer();
             var questions = new ArrayList<String>();
             for (var question : missing) {
                 if (!question.isTextual() || question.textValue().isBlank()) invalidAnswer();
                 questions.add(question.textValue());
             }
-            if (status.textValue().equals("ok") ? !questions.isEmpty() : questions.isEmpty()) invalidAnswer();
+            if (status.textValue().equals("ok") ? (items.isEmpty() || !questions.isEmpty()) : questions.isEmpty()) invalidAnswer();
             var candidates = new ArrayList<AnswerCandidate>();
             for (var item : items) {
-                checkFields(item, Set.of("code", "explanation"));
+                checkFields(item, Set.of("code", "explanation", "rating"));
                 if (!item.get("code").isTextual()
-                        || !(item.get("explanation").isNull() || item.get("explanation").isTextual())) invalidAnswer();
-                candidates.add(new AnswerCandidate(item.get("code").textValue(), item.get("explanation").textValue()));
+                        || !item.get("explanation").isTextual() || item.get("explanation").textValue().isBlank()
+                        || !item.get("rating").isNumber()) invalidAnswer();
+                double rating = item.get("rating").doubleValue();
+                if (!Double.isFinite(rating) || rating < 1 || rating > 5
+                        || (!candidates.isEmpty() && candidates.getLast().rating() < rating)) invalidAnswer();
+                candidates.add(new AnswerCandidate(item.get("code").textValue(), item.get("explanation").textValue(), rating));
             }
             return new Answer(status.textValue(), questions, candidates);
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {

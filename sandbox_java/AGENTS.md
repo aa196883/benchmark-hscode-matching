@@ -3,7 +3,11 @@
 Ces consignes couvrent uniquement `sandbox_java/`, le portage Java du RAG de
 classement HS : embedding de la description produit → voisins du catalogue HS 2022
 → sélection/explications par LLM → adaptation au contrat industriel.
-Le projet industriel complet est inaccessible ; `lestr_sources/` contient les extraits reçus.
+Les sources du service industriel reçu sont sous
+`lestr_sources/hs_references/trade-analysis/` (hors compilation locale et ignorées par Git).
+Elles incluent le câblage Spring, les migrations Flyway et les tests ; les autres modules
+industriels et le déploiement effectif restent externes. Ne jamais lire/afficher
+`src/test/resources/secrets.properties` ni copier ses secrets.
 
 - Lire d’abord les fichiers cités dans le prompt. Utiliser cette carte, puis explorer
   uniquement les fichiers utiles ; ne pas rescanner systématiquement tout le dépôt.
@@ -25,8 +29,8 @@ Le projet industriel complet est inaccessible ; `lestr_sources/` contient les ex
 | `simplified_env/pom.xml` | Agrégateur Maven : `compat`, `extension`, `runner` |
 | `simplified_env/extension/src/{main,test}/` | Production RAG et tests exportables |
 | `simplified_env/compat/src/main/java/` | Copies des contrats/services industriels ; dépendance `provided` d’extension |
-| `simplified_env/runner/src/{main,test}/java/` | CLI, référentiel en mémoire, doubles, tests de compatibilité |
-| `lestr_sources/` | Extraits hors compilation, ignorés par Git, parfois absents |
+| `simplified_env/runner/src/{main,test}/java/` | CLI RAG, référentiel en mémoire, copies de la chaîne de secours et Verbatim, tests de compatibilité |
+| `lestr_sources/hs_references/trade-analysis/` | Service industriel reçu : sources, configuration, migrations et tests, hors compilation locale |
 | `simplified_env/reference-manifest.json` | Empreintes des références/copies et écarts autorisés |
 | `scripts/` | Copie des ressources ; outils Python de parité réservés aux demandes explicites |
 
@@ -49,7 +53,7 @@ Les tests sont sous le même package dans `src/test/java/`.
 - `RagHSCodeAnalysisService` : `construct(properties, datasource, hsCodeService)` ouvre
   l’index PostgreSQL ; `loadIndex(datasource, hsCodeService)` l’ouvre sans client OpenAI.
   La DataSource et son pool appartiennent à l’appelant ; pas de lecture d’environnement dans le métier.
-  `searchFromDescription()` et `searchDetailed()` retournent le même `SearchResult_v2` complet.
+  `searchFromDescription()` et `searchDetailed()` retournent le même `SearchResult` complet.
 - `OpenAiRagClient` : modèles LangChain4j Responses/embeddings, injectables pour tests.
   `Config` : modèle, limite de sortie, température, effort de raisonnement.
   Défauts : `gpt-4.1-mini`, 2048, température/effort non renseignés ; `store=false`,
@@ -62,8 +66,8 @@ Les tests sont sous le même package dans `src/test/java/`.
   effectue un import explicite transactionnel, verrouillé et immuable (identique = aucune écriture).
   Le store en mémoire ne sert que dans les tests ; aucune solution de repli en production. Ne pas utiliser le store industriel `EmbeddingService`
   à leur place : format et descriptions différents.
-- Ressources sous `extension/src/main/resources/` + package commun : `rag_v2.txt`,
-  `rag_v2.schema.json`, `h6_2022/{manifest.json,vectors.jsonl}`.
+- Ressources sous `extension/src/main/resources/` + package commun : `rag_v4.txt`,
+  `rag_v4.schema.json`, `h6_2022/{manifest.json,vectors.jsonl}`.
   Lecture par flux, compatible JAR, aucun recalcul implicite ; vecteurs lus uniquement à l’import.
   `db/bootstrap.sql` prépare extension, rôles et schéma avant import (administrateur, une seule fois). Données complètes déjà
   présentes localement, ignorées par Git ; fixtures autonomes dans `src/test/resources/rag-fixtures/`.
@@ -81,19 +85,23 @@ Les tests sont sous le même package dans `src/test/java/`.
   Arguments : nouveau dossier de sortie, limite optionnelle ; clé `OPENAI_API_KEY`.
   Test de structure sans API dans le même package : `VectorizerTest`.
   Lancer le `main` avec le classpath de test ; inclus dans les sources exportées, pas dans le JAR. Ne pas lancer le catalogue complet pour tester.
-- Contrat RAG : `HSCodeAnalysisService_v2` (recherche uniquement), `SearchResult_v2`
-  et `Candidate_v2` sous `extension`, transférables. Ne pas modifier les contrats industriels v1.
-  Aucun `analyse()`, délégué Completion ni score dans le parcours v2. `RagResult` et
-  `RagGenerationClient` v1 restent présents mais inutilisés par ce parcours.
-- Codes HS textuels, zéros initiaux conservés, ordre LLM conservé, rangs non renumérotés
+- Contrats fusionnés sans suffixe : `domain.spi.HSCodeAnalysisService` (recherche
+  uniquement), `domain.model.SearchResult` et `infra.service.analysis.ia.model.Candidate`.
+  Ils appartiennent à `extension` et remplacent les anciens contrats industriels lors
+  du transfert. Aucun `analyse()` ni parcours Completion local ; `RagResult` supprimé.
+  `Candidate.rating` est un `Double` nullable pour les appelants non RAG ; le constructeur
+  à quatre arguments est conservé pour Verbatim. Le RAG exige un nombre fini de 1 à 5.
+  La chaîne de secours et Verbatim reçus sont copiés sans modification dans `runner`
+  pour compiler leurs appelants contre ces contrats, sans cycle avec `compat`.
+- Codes HS textuels, zéros initiaux conservés, ordre LLM validé par rating décroissant, rangs non renumérotés
   après filtrage, source `OpenAI_Hybrid`. Les résultats conservent description et explication
-  nullable par candidat ; `missing_information` contient les questions globales.
-  Statuts JSON : `ok` (candidats, aucune question) et `needs_info` (candidats et questions).
+  non vide par candidat généré ; `missing_information` contient les questions globales.
+  Statuts JSON : `ok` (candidats, aucune question) et `needs_info` (questions, candidats éventuellement vides).
   Aucun `abstained` ; récupération vide, JSON invalide ou rejet de tous les codes : exception.
-- `RagGenerationClient_v2` distingue réponse JSON et refus explicite du fournisseur.
-  Un refus Responses terminé conserve les premiers voisins avec explications nulles et
+- `RagGenerationClient` distingue réponse JSON et refus explicite du fournisseur.
+  Un refus Responses terminé retourne une liste vide et
   la question générique du POC en `needs_info`. Une réponse incomplète ou vide reste une erreur.
-  La CLI émet directement le résultat v2, sans enveloppes `prediction` / `search_result`.
+  La CLI propose uniquement `rag`, `rag-replay`, `rag-import` et `--help` ; elle émet directement le résultat, sans enveloppes `prediction` / `search_result`.
 - Si une copie industrielle doit changer : examiner la référence, caractériser le
   changement et documenter le manifeste. Ne jamais changer une empreinte pour masquer un échec.
 
@@ -118,7 +126,6 @@ Les tests sont sous le même package dans `src/test/java/`.
 ./simplified_env/dev.sh package -o
 ./simplified_env/dev.sh test -o
 ./simplified_env/dev.sh run --help
-./simplified_env/dev.sh run demo
 # Vérification des espaces ; aucun lint/formatter Java configuré
 git diff --check
 # Préparer les données si absentes/périmées, puis export (lance verify)
@@ -183,3 +190,56 @@ L’export produit `simplified_env/extension/target/transferable-sources.tar.gz`
 (+ `.sha256`) avec `src/main`, `src/test`, `INTEGRATION.md`. Garder ce guide autonome.
 Ne transférer ni `compat`, ni `runner`, ni POM locaux. L’assemblage Spring et les
 appelants industriels restent à valider dans leur dépôt ; voir le README racine.
+
+## Sources industrielles reçues et déploiement
+
+- `src/main/java/.../infra/configuration/ApplicationConfiguration.java` injecte une
+  `DataSource` dans le bean `HSCodeAnalysisService`.
+- `infra/service/analysis/HSCodeServiceFactory.java` conserve le nom
+  `constructOpenAICompletionAndVerbatim`, mais assemble déjà **RAG puis Verbatim**.
+  Les contrats fusionnés sont `domain.spi.HSCodeAnalysisService`,
+  `domain.model.SearchResult` et `infra.service.analysis.ia.model.Candidate`.
+- `src/test/java/.../analysis/ia/RagHSCodeServiceMT.java` reçu utilise Testcontainers
+  et Flyway, puis importe et vérifie les vecteurs. Il est désactivé avec `@Disabled`.
+  Le test local reste activable explicitement selon les commandes ci-dessus.
+- `src/main/resources/db/migration/V1__init.sql` reçu crée l’extension vector, le
+  schéma rag et embeddings, mais pas index_manifest ; la V2 locale complète ce point. Ne pas le confondre avec le
+  bootstrap local et ne pas supposer que ces objets suffisent à l’importeur local.
+- Contexte confirmé par l’utilisateur : PostgreSQL tourne dans un conteneur Docker
+  temporaire uniquement pour le test. Aucun hébergement Railway distant n’est requis.
+  `src/main/docker/application.yml` configure PostgreSQL (`org.postgresql.Driver`)
+  avec Hikari ; le test construit sa propre `PGSimpleDataSource` depuis le conteneur.
+  Flyway désigne ici l’outil de migration SQL utilisé par le test industriel.
+  Le contexte local est autonome : image pgvector épinglée, port dynamique, comptes
+  de test, initialisation une fois par classe et destruction à la fin. Ne pas reprendre
+  les identifiants du YAML industriel ni utiliser la base Compose pour ce test.
+- Refus fournisseur et absence de candidat compatible : suivre le Python, résultat
+  `needs_info` avec questions et liste vide ; aucun rating inventé. Une réponse
+  incomplète, une récupération vide ou le rejet de tous les codes proposés reste une erreur.
+- Le portage du prompt vise les constantes `PROMPT`/`SCHEMA` de
+  `../hs_matching/approaches/rag.py` (`rag_v4`). Le rating est numérique entre 1 et 5,
+  décimales admises ; les réponses doivent être en ordre décroissant. Les alternatives
+  contrefactuelles ont un plafond de 3 demandé par le prompt. Le rating n’est ni un
+  cosinus ni une probabilité. Les fixtures Python utilisent des fournisseurs simulés.
+
+### Suivi des références fusionnées
+
+`reference-manifest.json` conserve les empreintes reçues et locales, le chemin
+`reference_path` sous `lestr_sources` pour les sources fusionnées, et le motif des écarts.
+`SourceBoundaryTest` vérifie ces empreintes ainsi que l’absence de doublons entre
+`compat` et `extension`. Les anciennes copies Completion et leurs tests ont été retirés
+avec l’accord de l’utilisateur. Les tests de transport, catalogue, RAG et secours restent.
+Les noms de ressources `rag_v4.*` versionnent le prompt Python ; les classes Java ne
+portent aucun suffixe de version. Aucune reconstruction des embeddings n’est nécessaire.
+
+### Migration Flyway du test manuel
+
+`RagHSCodeServiceMT` utilise désormais Flyway 12.4.0 (dépendances de test) avec
+`extension/src/main/resources/db/migration/V1__init.sql`, copie industrielle exacte
+contrôlée par le manifeste, puis `V2__rag_index_manifest.sql`. Les rôles de test sont
+créés séparément après migration. L’importeur accepte deux tables précréées vides,
+vérifie les dimensions et conserve transaction, verrou et refus des index partiels.
+Le bootstrap reste réservé au parcours CLI/Compose et à ses tests PostgreSQL.
+`PgVectorIndexIT#flywayMigrationsSupportImportAndRejectPartialIndexes` vérifie ce parcours
+sans secret ni API. À l’intégration, conserver la V1 existante et choisir un numéro
+libre pour la migration complémentaire si V2 est déjà utilisée.

@@ -40,7 +40,7 @@ final class RagMain {
         int retrievalK = args.length > descriptionPosition + 2 ? Integer.parseInt(args[descriptionPosition + 2]) : 20;
         var index = RagHSCodeAnalysisService.loadIndex(datasource(false), hsCodeService);
         RagEmbeddingClient embeddings;
-        RagGenerationClient_v2 generation;
+        RagGenerationClient generation;
         if (replay) {
             int vectorPosition = 1;
             double[] vector = JSON.readValue(Files.readString(Path.of(args[vectorPosition])), double[].class);
@@ -49,7 +49,7 @@ final class RagMain {
                 @Override public Integer dimensions() { return index.configuredDimensions(); }
                 @Override public double[] embed(String description) { return vector.clone(); }
             };
-            generation = (instructions, input, schema) -> new RagGenerationClient_v2.Answer(response);
+            generation = (instructions, input, schema) -> new RagGenerationClient.Answer(response);
         } else {
             String key = System.getenv("OPENAI_API_KEY");
             if (key == null || key.isBlank()) throw new IllegalArgumentException("OPENAI_API_KEY required for rag");

@@ -6,6 +6,7 @@ import com.semsoft.lestr.common.test.Utils;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.infra.configuration.OpenAIProperties;
 import org.junit.jupiter.api.Test;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -50,13 +51,16 @@ class RagHSCodeServiceMT {
     void initializeService() throws Exception {
         var openAIProperties = new OpenAIProperties(Objects.requireNonNull(Utils.getSecret("OPENAI-API")));
         // One fresh database for the entire class, never the Compose database.
-        try (var connection = datasource(POSTGRES.getUsername(), POSTGRES.getPassword()).getConnection();
-             var statement = connection.createStatement();
-             var bootstrap = Objects.requireNonNull(RagIndexImporter.class.getResourceAsStream("db/bootstrap.sql"))) {
-            statement.execute(new String(bootstrap.readAllBytes(), StandardCharsets.UTF_8));
-            // Test-only credentials, scoped to this disposable container.
-            statement.execute("ALTER ROLE rag_import PASSWORD 'test-import'; "
-                    + "ALTER ROLE rag_reader PASSWORD 'test-reader'");
+        var admin = datasource(POSTGRES.getUsername(), POSTGRES.getPassword());
+        Flyway.configure().dataSource(admin).locations("classpath:db/migration").load().migrate();
+        try (var connection = admin.getConnection(); var statement = connection.createStatement()) {
+            // Credentials and grants belong to this disposable test, not to production migrations.
+            statement.execute("CREATE ROLE rag_import LOGIN PASSWORD 'test-import'; "
+                    + "CREATE ROLE rag_reader LOGIN PASSWORD 'test-reader'; "
+                    + "GRANT USAGE ON SCHEMA rag TO rag_import, rag_reader; "
+                    + "GRANT SELECT, INSERT ON ALL TABLES IN SCHEMA rag TO rag_import; "
+                    + "GRANT SELECT ON ALL TABLES IN SCHEMA rag TO rag_reader; "
+                    + "ALTER ROLE rag_reader SET default_transaction_read_only = on");
         }
         var hsCodeService = new HSCodeServiceImpl();
         var resources = PrecomputedIndexResources.packaged(hsCodeService);
@@ -150,7 +154,7 @@ class RagHSCodeServiceMT {
                 expectedHSCode
         );
 
-        com.semsoft.lestr.tradeanalysis.domain.model.SearchResult_v2 result =
+        com.semsoft.lestr.tradeanalysis.domain.model.SearchResult result =
                 ragHSCodeService.searchFromDescription(description);
 
         log.info(

@@ -4,11 +4,13 @@
   "candidates": [
     {
       "code": "010129",
-      "explanation": "Supported by supplied description"
+      "explanation": "Supported by supplied description",
+      "rating": 4.5
     },
     {
       "code": "010121",
-      "explanation": "Supported by supplied description"
+      "explanation": "Supported by supplied description",
+      "rating": 3
     }
   ]
 }

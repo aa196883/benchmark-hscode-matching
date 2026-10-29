@@ -1,5 +1,6 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
+import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.Candidate;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.semsoft.lestr.tradeanalysis.infra.service.HSCodeServiceImpl;
 import com.semsoft.lestr.tradeanalysis.domain.model.HSNomenclature;
@@ -69,6 +70,38 @@ class PgVectorIndexIT {
         return index.search(query, k).stream().map(row -> row.hsCode().toDigits()).toList();
     }
 
+    @Test void flywayMigrationsSupportImportAndRejectPartialIndexes() throws Exception {
+        execute(admin(), "DROP SCHEMA rag CASCADE");
+        var flyway = org.flywaydb.core.Flyway.configure().dataSource(admin())
+                .locations("classpath:db/migration").load();
+        assertEquals(2, flyway.migrate().migrationsExecuted);
+        assertEquals(0, flyway.migrate().migrationsExecuted);
+        execute(admin(), "GRANT USAGE ON SCHEMA rag TO rag_import, rag_reader; "
+                + "GRANT SELECT, INSERT, DELETE ON ALL TABLES IN SCHEMA rag TO rag_import; "
+                + "GRANT SELECT ON ALL TABLES IN SCHEMA rag TO rag_reader");
+        // The unchanged industrial migration fixes the dimension at 1536.
+        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
+        double[] vector = new double[1536]; vector[0] = 1;
+        rewriteVectors(encode(vector));
+        var manifest = (ObjectNode) parse(Files.readString(directory.resolve("manifest.json")));
+        manifest.put("dimensions", 1536);
+        Files.writeString(directory.resolve("manifest.json"), encode(manifest));
+        var resources = resources();
+        assertTrue(RagIndexImporter.importIndex(importer(), resources));
+        assertFalse(RagIndexImporter.importIndex(importer(), resources));
+        assertEquals(3, new PrecomputedEmbeddingIndex(reader(), resources).size());
+        assertThrows(SQLException.class, () -> execute(reader(), "DELETE FROM rag.embeddings"));
+        execute(importer(), "DELETE FROM rag.index_manifest");
+        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources));
+        assertEquals("3", scalar("SELECT count(*) FROM rag.embeddings"));
+        execute(importer(), "DELETE FROM rag.embeddings");
+        // A failed import into migrated tables rolls back rows, preserving the schema.
+        rewriteVectors("[1,0]");
+        assertThrows(Exception.class, () -> RagIndexImporter.importIndex(importer(), resources()));
+        assertEquals("0", scalar("SELECT count(*) FROM rag.embeddings"));
+        assertEquals("0", scalar("SELECT count(*) FROM rag.index_manifest"));
+    }
+
     @Test void importsReopensAndRunsRagWithReadOnlyRole() throws Exception {
         var resources = resources();
         assertTrue(RagIndexImporter.importIndex(importer(), resources));
@@ -81,10 +114,10 @@ class PgVectorIndexIT {
             public double[] embed(String text) { return new double[]{1, 0}; }
         };
         String answer = Files.readString(Path.of("src/test/resources/rag-fixtures/response.json"));
-        var service = new RagHSCodeAnalysisService(index, embeddings, (instructions, input, schema) -> new RagGenerationClient_v2.Answer(answer),
+        var service = new RagHSCodeAnalysisService(index, embeddings, (instructions, input, schema) -> new RagGenerationClient.Answer(answer),
                 3);
         var detailed = service.searchDetailed("Live horses", 2);
-        assertEquals(List.of("010129", "010121"), detailed.candidates().stream().map(com.semsoft.lestr.tradeanalysis.domain.model.Candidate_v2::code).toList());
+        assertEquals(List.of("010129", "010121"), detailed.candidates().stream().map(Candidate::code).toList());
         assertEquals("OpenAI_Hybrid", detailed.source().name());
         // No vector resource is opened by a new runtime instance.
         var readOnlyResources = new PrecomputedIndexResources(name -> {

@@ -9,7 +9,9 @@ import java.sql.*;
 import java.util.*;
 import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** Explicit, atomic, immutable import. Requires a prepared database and the schema-owner connection. */
+/** Explicit, atomic, immutable import into a prepared database.
+ * Migrated tables need SELECT/INSERT; creating absent tables also requires schema ownership.
+ */
 public final class RagIndexImporter {
     private static final long IMPORT_LOCK = 0x4853524147494e44L;
     private RagIndexImporter() {}
@@ -33,12 +35,22 @@ public final class RagIndexImporter {
                 }
                 if (embeddings || manifest) {
                     require(embeddings && manifest, "Incomplete RAG database; manual repair required");
-                    verify(connection, resources);
-                    resources.readVectors((row, vector) -> {});
-                    connection.commit();
-                    return false;
-                }
-                try (var statement = connection.createStatement()) {
+                    boolean empty;
+                    try (var statement = connection.createStatement(); var result = statement.executeQuery(
+                            "SELECT NOT EXISTS (SELECT 1 FROM rag.embeddings) "
+                                    + "AND NOT EXISTS (SELECT 1 FROM rag.index_manifest)")) {
+                        result.next();
+                        empty = result.getBoolean(1);
+                    }
+                    if (!empty) {
+                        verify(connection, resources);
+                        resources.readVectors((row, vector) -> {});
+                        connection.commit();
+                        return false;
+                    }
+                    // Flyway may prepare both tables; only a completely empty index is importable.
+                    verifyDimensions(connection, resources);
+                } else try (var statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE rag.embeddings (embedding_id UUID PRIMARY KEY, embedding vector("
                             + resources.dimensions + ") NOT NULL, text TEXT NOT NULL, metadata JSONB NOT NULL)");
                     statement.execute("CREATE UNIQUE INDEX rag_embeddings_code ON rag.embeddings ((metadata->>'code'))");
@@ -86,12 +98,7 @@ public final class RagIndexImporter {
                     "RAG database index differs from the packaged manifest; replacement is not automatic");
             require(!result.next(), "Multiple RAG manifests");
         }
-        try (var statement = connection.createStatement(); var result = statement.executeQuery(
-                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
-                        + "WHERE attrelid = 'rag.embeddings'::regclass AND attname = 'embedding' AND NOT attisdropped")) {
-            require(result.next() && ("vector(" + resources.dimensions + ")").equals(result.getString(1)),
-                    "RAG database vector dimensions differ from the manifest");
-        }
+        verifyDimensions(connection, resources);
         var expected = new HashMap<String, HSCodeWithDescription>();
         for (var row : resources.rows) expected.put(row.hsCode().toDigits(), row);
         try (var statement = connection.createStatement(); var result = statement.executeQuery(
@@ -106,4 +113,13 @@ public final class RagIndexImporter {
         }
         require(expected.isEmpty(), "Incomplete RAG database index");
     }
+    private static void verifyDimensions(Connection connection, PrecomputedIndexResources resources) throws SQLException {
+        try (var statement = connection.createStatement(); var result = statement.executeQuery(
+                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
+                        + "WHERE attrelid = 'rag.embeddings'::regclass AND attname = 'embedding' AND NOT attisdropped")) {
+            require(result.next() && ("vector(" + resources.dimensions + ")").equals(result.getString(1)),
+                    "RAG database vector dimensions differ from the manifest");
+        }
+    }
+
 }

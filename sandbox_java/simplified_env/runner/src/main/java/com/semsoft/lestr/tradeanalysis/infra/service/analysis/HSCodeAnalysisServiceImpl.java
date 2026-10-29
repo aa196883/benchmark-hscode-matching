@@ -35,18 +35,6 @@ public class HSCodeAnalysisServiceImpl implements HSCodeAnalysisService {
     }
 
     @Override
-    public AnalyseResult analyse(String description, HSCode hsCode) throws HSCodeAnalysisException {
-        for (HSCodeAnalysisService hsCodeService : hsCodeServiceList) {
-            try {
-                return hsCodeService.analyse(description, hsCode);
-            } catch (Throwable t) {
-                log.warn("Error for analyse when calling {} : {}", hsCodeService.getClass().getName(), t.getMessage(), t);
-            }
-        }
-        throw new RuntimeException("No HSCodeAnalysisService can answer");
-    }
-
-    @Override
     public Source getSource() {
         throw new RuntimeException("No source for this HSCodeAnalysisService");
     }

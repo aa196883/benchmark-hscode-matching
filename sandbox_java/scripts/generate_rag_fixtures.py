@@ -17,11 +17,11 @@ from hs_matching.vectorization.base import EmbeddingConfig, EmbeddingBatch
 OUT = ROOT / 'sandbox_java/simplified_env/extension/src/test/resources/rag-fixtures'
 MODEL = 'text-embedding-3-small'
 
-def envelope(codes=(), status='ok', missing=(), explanation='Supported by supplied description'):
+def envelope(codes=(), status='ok', missing=(), explanation='Supported by supplied description', ratings=None):
     return {'status': 'completed', 'model': 'test-llm', 'usage': {'total_tokens': 42},
             'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps({
                 'status': status, 'missing_information': list(missing),
-                'candidates': [{'code': c, 'explanation': explanation} for c in codes]})}]}]}
+                'candidates': [{'code': c, 'explanation': explanation, 'rating': ratings[i] if ratings else 4.5} for i, c in enumerate(codes)]})}]}]}
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
@@ -68,7 +68,10 @@ def main():
             cases.append(dict(name=name, response=raw['output'][0]['content'][0]['text'], query=query,
                               top_k=top_k, retrieval_k=retrieval_k, prompt=prompt, fails=fails,
                               embedding_calls=vectorizer.embed.call_count, generation_calls=provider.generate.call_count, expected=None if fails else expected))
-        add('llm_order', envelope(['010129', '010121']))
+        add('llm_order', envelope(['010129', '010121'], ratings=[4.5, 3]))
+        add('increasing_ratings', envelope(['010121', '010129'], ratings=[2, 4]))
+        add('rating_out_of_range', envelope(['010121'], ratings=[5.1]))
+        add('boolean_rating', envelope(['010121'], ratings=[True]))
         add('null_explanation', envelope(['010121'], explanation=None))
         add('needs_info_with_candidates', envelope(['010129'], 'needs_info', ['Intended use?']))
         add('needs_info_without_candidates', envelope([], 'needs_info', ['Intended use?']))
@@ -85,7 +88,7 @@ def main():
         add('k_larger_than_catalogue', envelope(['010130']), retrieval_k=20)
         (OUT/'cases.json').write_text(json.dumps(cases, indent=2, ensure_ascii=False)+'\n')
         (OUT/'query.json').write_text('[1.0,0.0]\n')
-        (OUT/'response.json').write_text(json.dumps(json.loads(envelope(['010129', '010121'])['output'][0]['content'][0]['text']),indent=2)+'\n')
+        (OUT/'response.json').write_text(json.dumps(json.loads(envelope(['010129', '010121'], ratings=[4.5, 3])['output'][0]['content'][0]['text']),indent=2)+'\n')
         print(f'{len(cases)} reference cases written to {OUT}')
 
 if __name__ == '__main__':

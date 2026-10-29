@@ -3,8 +3,8 @@
 Le RAG vectorise une description produit, recherche les voisins dans PostgreSQL /
 pgvector, puis fait sélectionner et expliquer les codes par un LLM. Les embeddings
 HS 2022 anglais sont précalculés : aucun recalcul du catalogue à l’import ou au démarrage.
-Seuls les extraits de `lestr_sources/` sont disponibles ; l’intégration industrielle
-complète reste à valider.
+Le service industriel reçu est disponible dans `lestr_sources/hs_references/trade-analysis/`.
+Le câblage Spring et les migrations peuvent y être examinés ; le déploiement reste à valider.
 
 ## Développer et tester
 
@@ -24,9 +24,9 @@ Docker pour les tests PostgreSQL, Compose pour la base persistante. Importer
 ./simplified_env/dev.sh verify -Ppgvector-it
 # Inclure l'import des 5 612 vecteurs réels et la comparaison à la référence Java
 ./simplified_env/dev.sh verify -Ppgvector-it -Drag.fullIndex=true
-# JAR local et démonstration de completion sans API/base
+# JAR local et aide CLI sans API/base
 ./simplified_env/dev.sh package
-./simplified_env/dev.sh run demo
+./simplified_env/dev.sh run --help
 ```
 
 `run` utilise `runner/target/sandbox.jar` **sans reconstruire**. Les tests ordinaires
@@ -103,16 +103,25 @@ base locale ; ne l’utiliser que pour repartir de zéro.
 
 Défauts : `text-embedding-3-small`, `gpt-4.1-mini`, 2048 tokens de sortie, 20 voisins,
 5 résultats. Recherche cosinus exacte, égalités départagées par code ; ordre LLM
-conservé, sans score de confiance, source `OpenAI_Hybrid`.
-`searchFromDescription()` et `searchDetailed()` retournent un `SearchResult_v2` unique :
-statut `ok` ou `needs_info`, candidats (`code`, `rank`, `description`, `explanation`)
+validé par rating décroissant, source `OpenAI_Hybrid`.
+`searchFromDescription()` et `searchDetailed()` retournent un `SearchResult` unique :
+statut `ok` ou `needs_info`, candidats (`code`, `rank`, `description`, `explanation`, `rating`)
 et questions globales `missing_information`. `needs_info` conserve les candidats
 provisoires même si les correspondances sont faibles. Un refus explicite du fournisseur
-conserve les premiers voisins et pose la question générique du POC ; une réponse
+retourne une liste vide et pose la question générique du POC ; une réponse
 incomplète, une récupération vide ou une réponse invalide déclenche une exception.
+Le prompt et le schéma sont ceux du Python `rag_v4`. Le rating est un nombre fini
+entre 1 et 5 (décimales admises), indépendant du cosinus ; il est obligatoire pour
+chaque candidat généré. Une réponse avec ratings croissants est rejetée, sans tri
+correctif ni renumérotation des rangs. Les explications générées doivent être non vides.
+`needs_info` accepte une liste vide si aucun candidat ne convient.
 La CLI affiche directement cet objet JSON, sans `prediction` / `search_result`.
-L’interface `HSCodeAnalysisService_v2` ne propose pas `analyse()` et ne nécessite
-aucun délégué Completion. Les contrats v1 restent inchangés.
+L’interface `HSCodeAnalysisService` ne propose pas `analyse()` et ne nécessite
+aucun délégué Completion. Les contrats fusionnés remplacent les anciens contrats ;
+`Candidate` conserve son package industriel `infra.service.analysis.ia.model`.
+Le constructeur à quatre arguments reste disponible pour Verbatim avec `rating=null`.
+Le RAG fournit toujours un rating. Les anciennes commandes `demo`, `search`, `analyse`
+et leurs variantes `live-*` ont été retirées ; la CLI expose uniquement le parcours RAG.
 
 ## Intégration industrielle
 
@@ -126,6 +135,25 @@ Le module cible doit préparer sa base, lancer l’import avec son compte dédi�
 injecter sa `DataSource` de lecture dans
 `RagHSCodeAnalysisService.construct(openAIProperties, datasource, hsCodeService)`.
 Le service ne possède pas le pool de connexions. Valider câblage Spring, ressources,
-dépendances et appelants v2 dans le dépôt industriel. Le nouveau service n’implémente
-pas l’interface v1 de la chaîne de secours ; son raccordement doit être explicite.
-Les nouveaux contrats v2 sont inclus dans les sources transférables d’`extension`.
+dépendances et appelants dans le dépôt industriel. Le service implémente désormais
+l’interface fusionnée de la chaîne de secours. Les contrats inclus dans `extension`
+sont à remplacer dans le module cible, notamment `Candidate` qui ajoute `rating`.
+La chaîne de secours et Verbatim reçus sont compilés et testés dans `runner` ; leurs
+copies locales ne sont pas exportées.
+
+### État du service reçu
+
+La factory `HSCodeServiceFactory.constructOpenAICompletionAndVerbatim` assemble déjà
+RAG puis Verbatim avec les contrats sans suffixe. Le banc local est aligné sur ces
+contrats et ne contient plus le parcours Completion historique.
+`ApplicationConfiguration` injecte une DataSource ; le test manuel reçu utilise
+Testcontainers et Flyway. La migration `V1__init.sql` reçue ne crée pas
+`rag.index_manifest` : la migration complémentaire `V2__rag_index_manifest.sql` la crée.
+Le test local exécute ces deux migrations avec Flyway ; V1 est copiée sans modification
+et son empreinte est contrôlée dans `reference-manifest.json`.
+Le contexte confirmé est une base PostgreSQL Docker temporaire réservée au test.
+`src/main/docker/application.yml` configure PostgreSQL avec Hikari pour l’application ;
+le test crée sa propre `PGSimpleDataSource` depuis Testcontainers et utilise Flyway
+pour les migrations. Aucun service Railway distant ni identifiant de base externe
+n’est nécessaire. Le test local utilise Flyway puis crée ses comptes de test,
+puis détruit le conteneur à la fin ; il ne touche pas à la base Compose persistante.

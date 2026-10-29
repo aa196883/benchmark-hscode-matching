@@ -24,7 +24,7 @@ class OpenAiRagClientTest {
         };
         var client = new OpenAiRagClient(model, null, null);
         var schema = parse("{\"type\":\"object\",\"properties\":{\"code\":{\"enum\":[\"010121\"]}}}");
-        assertEquals("{\"candidates\":[]}", ((RagGenerationClient_v2.Answer) client.generate("instructions", "horses", schema)).text());
+        assertEquals("{\"candidates\":[]}", ((RagGenerationClient.Answer) client.generate("instructions", "horses", schema)).text());
         var request = captured.get();
         assertEquals(SystemMessage.from("instructions"), request.messages().get(0));
         assertEquals(UserMessage.from("horses"), request.messages().get(1));
@@ -79,7 +79,7 @@ class OpenAiRagClientTest {
                     {"id":"resp_test","status":"completed","model":"fixture","output":[
                       {"type":"message","role":"assistant","content":[{"type":"refusal","refusal":"Declined"}]}]}
                     """);
-            assertInstanceOf(RagGenerationClient_v2.Refusal.class, client.generate("i", "u", parse("{}")));
+            assertInstanceOf(RagGenerationClient.Refusal.class, client.generate("i", "u", parse("{}")));
             body.set(body.get().replace("completed", "incomplete"));
             assertThrows(com.semsoft.lestr.tradeanalysis.domain.model.HSCodeAnalysisException.class,
                     () -> client.generate("i", "u", parse("{}")));

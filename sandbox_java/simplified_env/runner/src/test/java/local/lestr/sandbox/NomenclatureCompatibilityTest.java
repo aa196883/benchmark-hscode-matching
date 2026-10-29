@@ -2,7 +2,6 @@ package local.lestr.sandbox;
 
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
-import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.ResponseFormatUtils;
 import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.*;
 import org.junit.jupiter.api.Test;
 import java.util.*;
@@ -50,13 +49,5 @@ class NomenclatureCompatibilityTest {
         chapter.addChildLevel("01", HSVersion.V_2022, "replacement");
         assertEquals("replacement", chapter.getChild("01").getDescription());
         assertEquals(child, chapter.getChild("01"));
-    }
-    @Test void numberCandidatesParsingIsRestored() {
-        var utils = new ResponseFormatUtils();
-        var result = utils.parseResponseNumberCandidates("""
-                {"numberCandidates":[{"number":2,"percent_relevance_score":85}],"ignored":true}
-                """);
-        assertEquals(new NumberCandidates(List.of(new NumberCandidate(2, 85))), result.orElseThrow());
-        assertTrue(utils.parseResponseNumberCandidates("invalid").isEmpty());
     }
 }

@@ -12,7 +12,7 @@ import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiResponsesChatModel;
 
 /** Thin LangChain4j adapter: generated JSON text and query vector only. */
-public final class OpenAiRagClient implements RagGenerationClient_v2, RagEmbeddingClient {
+public final class OpenAiRagClient implements RagGenerationClient, RagEmbeddingClient {
     public record Config(String model, int maxOutputTokens, Double temperature, String reasoningEffort) {
         public static Config defaults() { return new Config("gpt-4.1-mini", 2048, null, null); }
     }

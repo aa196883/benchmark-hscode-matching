@@ -6,8 +6,7 @@
       "type": "string",
       "enum": [
         "ok",
-        "needs_info",
-        "abstained"
+        "needs_info"
       ]
     },
     "missing_information": {
@@ -26,15 +25,19 @@
             "type": "string"
           },
           "explanation": {
-            "type": [
-              "string",
-              "null"
-            ]
+            "type": "string",
+            "minLength": 1
+          },
+          "rating": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
           }
         },
         "required": [
           "code",
-          "explanation"
+          "explanation",
+          "rating"
         ]
       }
     }

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.*;
 import com.semsoft.lestr.shared.kernel.goods.HSCode;
 import com.semsoft.lestr.tradeanalysis.domain.model.*;
 import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.*;
-import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.Candidates;
+import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.NumberCandidates;
 import com.sun.net.httpserver.HttpServer;
 import dev.langchain4j.model.openai.*;
 import dev.langchain4j.data.embedding.Embedding;
@@ -45,7 +45,7 @@ class ProviderWireCompatibilityTest {
             var model = OpenAiChatModel.builder().apiKey("fixture-key").modelName("test-model")
                     .baseUrl(baseUrl).timeout(Duration.ofSeconds(5)).maxRetries(0).build();
             var chat = new ChatService();
-            assertEquals("fixture answer", chat.doChat(model, "test-model", "system", "user", chat.getResponseFormat(Candidates.class)));
+            assertEquals("fixture answer", chat.doChat(model, "test-model", "system", "user", chat.getResponseFormat(NumberCandidates.class)));
             assertEquals("system", requests.getFirst().path("messages").get(0).path("role").asText());
             assertEquals("user", requests.getFirst().path("messages").get(1).path("content").asText());
             assertFalse(requests.getFirst().path("response_format").isMissingNode());

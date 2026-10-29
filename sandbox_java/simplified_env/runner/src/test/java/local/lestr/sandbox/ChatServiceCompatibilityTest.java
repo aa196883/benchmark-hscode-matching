@@ -1,7 +1,7 @@
 package local.lestr.sandbox;
 
 import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.ChatService;
-import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.Candidates;
+import com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.model.NumberCandidates;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
@@ -20,7 +20,7 @@ class ChatServiceCompatibilityTest {
             }
         };
         var chat = new ChatService();
-        var format = chat.getResponseFormat(Candidates.class);
+        var format = chat.getResponseFormat(NumberCandidates.class);
         assertEquals("fixture answer", chat.doChat(model, "test-model", "system", "user", format));
         assertEquals("test-model", captured.get().modelName());
         assertEquals(format, captured.get().responseFormat());

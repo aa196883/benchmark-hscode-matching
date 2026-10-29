@@ -39,7 +39,7 @@ def main():
             hits, _ = retriever.retrieve('offline parity query', 20)
             selected = [hits[1].code, hits[0].code]
             answer = {'status':'ok','missing_information':[], 'candidates':[
-                {'code':code,'explanation':'Offline parity fixture'} for code in selected]}
+                {'code':code,'explanation':'Offline parity fixture','rating':4.5} for code in selected]}
             raw = {'status':'completed','model':'fixture', 'output':[{'type':'message','content':[
                 {'type':'output_text','text':json.dumps(answer)}]}]}
             provider = Mock(); provider.name = 'openai'; provider.generate.return_value = raw
@@ -51,7 +51,7 @@ def main():
             completed = subprocess.run(command, check=True, text=True, capture_output=True, cwd=folder, timeout=90)
             java = json.loads(completed.stdout)
             assert java['status'] == py.status == 'ok'
-            assert [(c['code'],c['rank'],c['explanation']) for c in java['candidates']] == [(c.code,c.rank,c.explanation) for c in py.candidates]
+            assert [(c['code'],c['rank'],c['explanation'],c['rating']) for c in java['candidates']] == [(c.code,c.rank,c.explanation,c.rating) for c in py.candidates]
             assert java['missing_information'] == py.to_dict()['missing_information']
             assert all('score' not in c for c in java['candidates'])
             assert java['source'] == 'OpenAI_Hybrid'

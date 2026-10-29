@@ -2,18 +2,25 @@
 
 Reporter les sources, ressources et tests utiles dans le module industriel en
 conservant les packages. Ne transférer ni `compat`, ni `runner`, ni les POM locaux.
-Le provisionnement réel de `trade-analysis` et son câblage Spring restent à définir
-dans le dépôt industriel ; les extraits fournis ne contiennent pas ces éléments.
+Le service industriel reçu sous `lestr_sources/hs_references/trade-analysis/`
+contient le câblage Spring et les migrations Flyway. La factory assemble déjà RAG
+puis Verbatim. Le banc local utilise les contrats fusionnés, sans suffixe de version.
+Le contexte de test confirmé est une base PostgreSQL dans un conteneur Docker
+éphémère. Le YAML industriel (`src/main/docker/application.yml`) configure une
+DataSource PostgreSQL/Hikari ; le test utilise sa propre `PGSimpleDataSource` et
+Flyway pour les migrations. Aucun service Railway distant n’est requis.
+`RagHSCodeServiceMT` initialise sa base avec Flyway et des comptes de test,
+indépendamment de la base Compose persistante et des identifiants industriels.
 
 ## Dépendances et ressources
 
 Java 21 ; LangChain4j / OpenAI 1.20.0 ; **langchain4j-pgvector 1.20.0-beta30** ;
 pilote PostgreSQL 42.7.12 ; Jackson Databind avec BOM 2.21.4.
-Tests : JUnit Jupiter 5.12.2, Testcontainers `postgresql` et `junit-jupiter` 1.21.4.
+Tests : Flyway `flyway-core` et `flyway-database-postgresql` 12.4.0 ; JUnit Jupiter 5.12.2, Testcontainers `postgresql` et `junit-jupiter` 1.21.4.
 Les tests locaux utilisent PostgreSQL 17 / pgvector 0.8.1.
 
 Sous `src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`,
-conserver sans filtrage `rag_v2.txt`, `rag_v2.schema.json`,
+conserver sans filtrage `rag_v4.txt`, `rag_v4.schema.json`,
 `h6_2022/{manifest.json,vectors.jsonl}` et `db/bootstrap.sql`.
 Les vecteurs servent uniquement à l’import ; le manifeste reste nécessaire au démarrage.
 Les descriptions viennent du `HSCodeService` industriel : injecter son instance
@@ -65,12 +72,15 @@ les vecteurs locaux. Il ne crée aucun objet SQL et ne ferme pas la `DataSource`
 La factory peut lever `IOException`, `SQLException` ou une erreur de validation.
 `loadIndex(readOnlyDataSource, hsCodeService)` ouvre l’index sans construire de client OpenAI.
 
-`RagHSCodeAnalysisService` implémente `HSCodeAnalysisService_v2` : recherche uniquement,
-aucun `analyse()` ni délégué Completion. Copier les nouveaux contrats `domain.spi.HSCodeAnalysisService_v2`,
-`domain.model.SearchResult_v2` et `domain.model.Candidate_v2` avec les sources du service.
-Les contrats industriels v1 sont conservés et ne doivent pas être écrasés. Le service
-ne s’insère plus dans une collection de `HSCodeAnalysisService` v1 : adapter les appelants
-et le câblage Spring au contrat v2 dans le dépôt industriel.
+`RagHSCodeAnalysisService` implémente `HSCodeAnalysisService` : recherche uniquement,
+aucun `analyse()` ni délégué Completion. Remplacer les contrats existants par
+`domain.spi.HSCodeAnalysisService`, `domain.model.SearchResult` et
+`infra.service.analysis.ia.model.Candidate` inclus dans les sources exportées.
+Le service peut être inséré directement dans la chaîne industrielle RAG puis Verbatim.
+`Candidate` ajoute `Double rating` ; son constructeur à quatre arguments est conservé
+pour Verbatim, avec rating nul. Aucun changement de son classement par rang n’est fait.
+Les copies de la chaîne et de Verbatim dans le runner servent uniquement à valider
+cette compatibilité et ne doivent pas être transférées.
 
 `searchFromDescription()` retourne au maximum cinq candidats ; `searchDetailed(description, topK)`
 permet un nombre explicite, avec `retrievalK >= topK`. Les deux renvoient le même résultat :
@@ -80,31 +90,33 @@ permet un nombre explicite, avec `retrievalK >= topK`. Les deux renvoient le mê
   "source": "OpenAI_Hybrid",
   "status": "needs_info",
   "candidates": [
-    {"code": "010121", "rank": 1, "description": "Pure-bred breeding animals", "explanation": "Provisional match"}
+    {"code": "010121", "rank": 1, "description": "Pure-bred breeding animals", "explanation": "Provisional match, conditional on breeding use", "rating": 2.5}
   ],
   "missing_information": ["Is the animal intended for breeding?"]
 }
 ```
 
 Les codes sont textuels, les descriptions viennent du catalogue, les rangs restent ceux
-proposés par le LLM, même après filtrage. Aucun score de confiance n’est ajouté.
-`SearchResult_v2.Status.OK` et `NEEDS_INFO` se sérialisent `ok` et `needs_info`.
-Les explications peuvent être nulles. Les listes du résultat sont immuables.
-`ok` exige des candidats et aucune question ; `needs_info` exige des candidats provisoires
-et des questions non vides. `abstained` et les champs JSON supplémentaires sont rejetés.
+proposés par le LLM, même après filtrage. Le rating numérique indépendant est obligatoire pour le RAG, entre 1 et 5, décimales admises.
+L’ordre doit être décroissant ; une violation est une erreur de validation.
+`SearchResult.Status.OK` et `NEEDS_INFO` se sérialisent `ok` et `needs_info`.
+Les explications générées doivent être des chaînes non vides. Les listes du résultat sont immuables.
+`ok` exige des candidats et aucune question ; `needs_info` exige des questions non vides et peut avoir une liste de candidats vide. `abstained` et les champs JSON supplémentaires sont rejetés.
 Une récupération vide, une réponse invalide ou le rejet de tous les codes proposés lève
 une exception. Les erreurs techniques ne sont pas transformées en résultat métier.
 
-`RagGenerationClient_v2` retourne soit `Answer` (JSON), soit `Refusal`. Le client OpenAI
+`RagGenerationClient` retourne soit `Answer` (JSON), soit `Refusal`. Le client OpenAI
 vérifie le statut Responses et ses contenus `refusal` via les métadonnées HTTP du modèle
-LangChain4j. Un refus explicite d’une réponse terminée produit `needs_info`, les premiers
-voisins, des explications nulles et la question générique du POC sur les caractéristiques
+LangChain4j. Un refus explicite d’une réponse terminée produit `needs_info`, une liste
+vide de candidats et la question générique du POC sur les caractéristiques
 de la marchandise. Une réponse incomplète ou vide reste une erreur. Les modèles injectés
 pour les tests peuvent retourner du texte sans métadonnées HTTP ; leur motif de fin,
 lorsqu’il est renseigné, doit être `STOP`.
 
-`RagResult` et `RagGenerationClient` v1 restent disponibles mais ne sont plus utilisés
-par le service. Aucun secours implicite vers un index en mémoire.
+Supprimer les anciens fichiers `*_v2`, `RagResult` et les ressources `rag_v1.*` /
+`rag_v2.*` lors du remplacement. Le seul client de génération est `RagGenerationClient`
+et les seules ressources de prompt sont `rag_v4.*`. Aucun secours implicite vers un
+index en mémoire. Le changement de prompt/contrat ne nécessite aucun recalcul des vecteurs.
 
 ## Validation
 
@@ -124,7 +136,7 @@ fois pour toute la classe ; le conteneur est supprimé à la fin, même en cas d
 Aucun Compose, base préexistante ni variable `RAG_DB_*` n’est nécessaire.
 
 Sélectionner explicitement `-Dtest=RagHSCodeServiceMT` avec `RUN_OPENAI_MT=true`.
-Le test charge la clé comme `CompletionHSCodeServiceMT` :
+Le test charge la clé via le mécanisme industriel :
 `new OpenAIProperties(Objects.requireNonNull(Utils.getSecret("OPENAI-API")))`, avec
 `com.semsoft.lestr.common.test.Utils` du projet industriel. Ne pas transférer son
 substitut local de `compat`, qui lit `OPENAI_API_KEY` uniquement dans le bac à sable. Le moteur Docker, les dépendances
@@ -145,3 +157,17 @@ vectorisé. `VectorizerTest` vérifie la structure sans appel API.
 Seule une génération complète fournit un index importable : remplacer ensemble
 `vectors.jsonl` et `manifest.json` dans les ressources `h6_2022`, puis reconstruire.
 L’import refuse de remplacer un index différent déjà présent en base.
+
+## Migrations du test manuel
+
+`RagHSCodeServiceMT` exécute `classpath:db/migration` :
+- `V1__init.sql` est la copie exacte de la migration industrielle (vecteurs de 1536 dimensions).
+- `V2__rag_index_manifest.sql` ajoute le marqueur de fin d’import exigé par le RAG.
+
+Conserver la V1 existante dans le dépôt industriel ; intégrer V2 avec un numéro libre
+si cette version y est déjà occupée. Ne pas modifier une migration déjà appliquée.
+L’importeur accepte les deux tables vides préparées par Flyway, puis importe vecteurs
+et manifeste dans une transaction. Un index partiel ou différent reste refusé ; un
+index identique ne provoque aucune écriture. Les rôles de test sont créés après les
+migrations : import avec SELECT/INSERT, service avec SELECT uniquement.
+Le bootstrap reste disponible pour la CLI/Compose et les tests de ce parcours.

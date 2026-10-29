@@ -6,10 +6,11 @@
     "change": "identical"
   },
   "HSCodeAnalysisService.java": {
-    "reference_sha256": "e87c995373f9ec93ef4321144c6f15d2659aefb864b0b6bfc7dc588b4285c93e",
-    "local_sha256": "e87c995373f9ec93ef4321144c6f15d2659aefb864b0b6bfc7dc588b4285c93e",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/spi/HSCodeAnalysisService.java",
-    "change": "identical"
+    "reference_sha256": "1253ce299b2ef6b038aed79468e6d383c8231f5dc2a6f360dd8b3ad26d664c8a",
+    "local_sha256": "00442c3dfc9c8f3c6f6956867c9de4184b94f76c24c9b1785a55a3c00bf3574c",
+    "local_path": "extension/src/main/java/com/semsoft/lestr/tradeanalysis/domain/spi/HSCodeAnalysisService.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/domain/spi/HSCodeAnalysisService.java",
+    "change": "Merged search-only contract moved to extension; formatting and comments only."
   },
   "HSCodeService.java": {
     "reference_sha256": "1a0e1b09558733194396a94b53c8c37228f1758b1e5dde2b3a6533c8677f2bf3",
@@ -54,10 +55,11 @@
     "change": "identical"
   },
   "SearchResult.java": {
-    "reference_sha256": "3eed9c3ee21f8454631bb21d5eb75e8f2e3117861ce2f202bc0d1b2299ab1081",
-    "local_sha256": "3eed9c3ee21f8454631bb21d5eb75e8f2e3117861ce2f202bc0d1b2299ab1081",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/SearchResult.java",
-    "change": "identical"
+    "reference_sha256": "51e14dbd3788ef463c3fbff720086b15eba7bbfcab3f02c7107378ca1dd337b2",
+    "local_sha256": "19e663f61e1e5710d3ebe430759aa97edd8637e36e0e1af74680e1b837fb7ae4",
+    "local_path": "extension/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/SearchResult.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/domain/model/SearchResult.java",
+    "change": "Merged contract moved to extension; needs_info permits empty candidates, matching Python rag_v4."
   },
   "Source.java": {
     "reference_sha256": "e2569eba67ee0bb4b29894a4e01b6d29f4653ffb115bdb627b3f0155ddf8d1c4",
@@ -72,33 +74,23 @@
     "change": "identical"
   },
   "HSCodeAnalysisServiceImpl.java": {
-    "reference_sha256": "9ef53e23114a0abd6c2e70f05fcd97e8b16930e61496c2c240d6ad8d02543733",
-    "local_sha256": "9ef53e23114a0abd6c2e70f05fcd97e8b16930e61496c2c240d6ad8d02543733",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/HSCodeAnalysisServiceImpl.java",
-    "change": "identical"
+    "reference_sha256": "87833a9d9a8ef93d5b5c583aea3391c6020ec48b05eca3d9c2aae18524ac09a2",
+    "local_sha256": "87833a9d9a8ef93d5b5c583aea3391c6020ec48b05eca3d9c2aae18524ac09a2",
+    "local_path": "runner/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/HSCodeAnalysisServiceImpl.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/HSCodeAnalysisServiceImpl.java",
+    "change": "Identical merged search-only fallback; local runner assembly to avoid dependency cycle."
   },
   "Candidate.java": {
-    "reference_sha256": "7bad97e0b573daaff18cb34a2f1e13f96b8b8cec6b95a87677b811bd9532a77b",
-    "local_sha256": "7bad97e0b573daaff18cb34a2f1e13f96b8b8cec6b95a87677b811bd9532a77b",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/Candidate.java",
-    "change": "identical"
-  },
-  "Candidates.java": {
-    "reference_sha256": "15a0d4cdc4efd9e76a3af18d34bfa6049158ba5cb0986670090ec408b30b2e01",
-    "local_sha256": "15a0d4cdc4efd9e76a3af18d34bfa6049158ba5cb0986670090ec408b30b2e01",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/Candidates.java",
-    "change": "identical"
+    "reference_sha256": "09cdb0a1723da2dd4cda7883575e3343c835fc25b82e0ae7bc0f4d21f8f6a109",
+    "local_sha256": "38cd1284077319cf239b9696296848bdb403b44e9695a6ff87afcf09a540a0b3",
+    "local_path": "extension/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/Candidate.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/Candidate.java",
+    "change": "Merged industrial package; adds nullable decimal rating validated when present, with four-argument constructor preserved for Verbatim. RAG requires rating."
   },
   "EmbeddingModelType.java": {
     "reference_sha256": "aba69bd91e704739f925edc8de68bad9355f2e953184abb68635ce4a6a1aedeb",
     "local_sha256": "aba69bd91e704739f925edc8de68bad9355f2e953184abb68635ce4a6a1aedeb",
     "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/model/EmbeddingModelType.java",
-    "change": "identical"
-  },
-  "CompletionHSCodeChatServiceImpl.java": {
-    "reference_sha256": "907cce3c26f154626fd0ff6355237e368fb2df579cba95e638f355d3db81eb9f",
-    "local_sha256": "907cce3c26f154626fd0ff6355237e368fb2df579cba95e638f355d3db81eb9f",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/CompletionHSCodeChatServiceImpl.java",
     "change": "identical"
   },
   "ChatService.java": {
@@ -111,12 +103,6 @@
     "reference_sha256": "a5e1aed06336f3b262e5b80016f312348b40e353b07f709749b6049a4041558a",
     "local_sha256": "a5e1aed06336f3b262e5b80016f312348b40e353b07f709749b6049a4041558a",
     "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/EmbeddingService.java",
-    "change": "identical"
-  },
-  "ResponseFormatUtils.java": {
-    "reference_sha256": "4cec9e0d84211510764488cb239a8015b323d5baf385040d660abc3e654f9141",
-    "local_sha256": "4cec9e0d84211510764488cb239a8015b323d5baf385040d660abc3e654f9141",
-    "local_path": "compat/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/ResponseFormatUtils.java",
     "change": "identical"
   },
   "OpenAIProperties.java": {
@@ -175,6 +161,34 @@
     "reference_sha256": "6efa04b8369c55aa9dfe637171bed8f451e5b78dcfd1d2a282523e74589f5a8d",
     "local_sha256": "6efa04b8369c55aa9dfe637171bed8f451e5b78dcfd1d2a282523e74589f5a8d",
     "local_path": "compat/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/hs_references/H5.json",
+    "change": "identical"
+  },
+  "CandidateComparator.java": {
+    "reference_sha256": "5ac852f0f35346b0f99d1d0d0dea50abf3d530db81ed634ba3792e728b5d13c7",
+    "local_sha256": "5ac852f0f35346b0f99d1d0d0dea50abf3d530db81ed634ba3792e728b5d13c7",
+    "local_path": "runner/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/CandidateComparator.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/CandidateComparator.java",
+    "change": "Identical received source; runner-only industrial caller compatibility check, not exported."
+  },
+  "VerbatimHSCodeServiceImpl.java": {
+    "reference_sha256": "62b70205e4b45445f5d46ec779ecf141a2e55df405350a9809d129dd32639b22",
+    "local_sha256": "62b70205e4b45445f5d46ec779ecf141a2e55df405350a9809d129dd32639b22",
+    "local_path": "runner/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/verbatim/VerbatimHSCodeServiceImpl.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/verbatim/VerbatimHSCodeServiceImpl.java",
+    "change": "Identical received source; runner-only industrial caller compatibility check, not exported."
+  },
+  "StringUtils.java": {
+    "reference_sha256": "8f0d480a82aaa8e41a64fe648bf85a937303bd06961f47d4dcc247f7f19588cb",
+    "local_sha256": "8f0d480a82aaa8e41a64fe648bf85a937303bd06961f47d4dcc247f7f19588cb",
+    "local_path": "runner/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/verbatim/StringUtils.java",
+    "reference_path": "hs_references/trade-analysis/src/main/java/com/semsoft/lestr/tradeanalysis/infra/service/analysis/verbatim/StringUtils.java",
+    "change": "Identical received source; runner-only industrial caller compatibility check, not exported."
+  },
+  "V1__init.sql": {
+    "reference_sha256": "fdaf488fbf2365f4ebb532c6fc8049afaaaae2138f4a54980f3a969515acc460",
+    "local_sha256": "fdaf488fbf2365f4ebb532c6fc8049afaaaae2138f4a54980f3a969515acc460",
+    "local_path": "extension/src/main/resources/db/migration/V1__init.sql",
+    "reference_path": "hs_references/trade-analysis/src/main/resources/db/migration/V1__init.sql",
     "change": "identical"
   }
 }

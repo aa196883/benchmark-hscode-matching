@@ -29,7 +29,7 @@ class ReferenceCasesTest {
             return new double[]{1, 0};
         };
         JsonNode expected = c.get("expected");
-        RagGenerationClient_v2 generate = (instructions, input, schema) -> {
+        RagGenerationClient generate = (instructions, input, schema) -> {
             generateCalls.incrementAndGet();
             JsonNode prompt = c.get("prompt");
             assertEquals(prompt.path("instructions").asText(), instructions);
@@ -37,7 +37,7 @@ class ReferenceCasesTest {
             assertEquals(prompt.get("schema"), schema);
             assertFalse(input.contains("cosine"));
             assertFalse(parse(input).path("candidates").get(0).has("score"));
-            return new RagGenerationClient_v2.Answer(c.get("response").asText());
+            return new RagGenerationClient.Answer(c.get("response").asText());
         };
         var service = new RagHSCodeAnalysisService(index, embed, generate, c.get("retrieval_k").asInt());
         if (c.path("fails").asBoolean()) {
@@ -46,7 +46,10 @@ class ReferenceCasesTest {
         } else {
             var result = service.searchDetailed(c.get("query").asText(), c.get("top_k").asInt());
             // Exact business JSON also ensures diagnostic fields are absent.
-            assertEquals(expected, MAPPER.valueToTree(result));
+            JsonNode actual = MAPPER.valueToTree(result);
+            assertTrue(expected.equals((a, b) -> a.isNumber() && b.isNumber()
+                    ? a.decimalValue().compareTo(b.decimalValue()) : (a.equals(b) ? 0 : 1), actual),
+                    () -> "Expected " + expected + " but was " + actual);
 
         }
         assertEquals(c.get("embedding_calls").asInt(), embedCalls.get());

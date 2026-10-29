@@ -18,7 +18,7 @@ class SourceBoundaryTest {
             var info = entry.getValue();
             var local = root.resolve(info.get("local_path").asText());
             assertEquals(info.get("local_sha256").asText(), sha(local), "Undocumented compat change: " + local);
-            var reference = root.getParent().resolve("lestr_sources").resolve(entry.getKey());
+            var reference = root.getParent().resolve("lestr_sources").resolve(info.has("reference_path") ? info.get("reference_path").asText() : entry.getKey());
             // Reference snippets are ignored by git, so a fresh checkout can build without them.
             if (Files.exists(reference))
                 assertEquals(info.get("reference_sha256").asText(), sha(reference), "Reference changed; review compatibility: " + reference);

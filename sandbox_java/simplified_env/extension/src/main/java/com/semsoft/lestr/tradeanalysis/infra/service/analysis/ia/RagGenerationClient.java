@@ -1,9 +1,16 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.util.Objects;
 
-/** Generates the JSON answer as text, independently of the provider protocol. */
+/** Distinguishes an explicit provider refusal from generated JSON and failures. */
 @FunctionalInterface
 public interface RagGenerationClient {
-    String generate(String instructions, String input, JsonNode schema);
+    Result generate(String instructions, String input, JsonNode schema);
+
+    sealed interface Result permits Answer, Refusal {}
+    record Answer(String text) implements Result {
+        public Answer { Objects.requireNonNull(text); }
+    }
+    record Refusal() implements Result {}
 }
