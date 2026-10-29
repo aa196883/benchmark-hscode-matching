@@ -63,7 +63,8 @@ Les tests sont sous le même package dans `src/test/java/`.
   PgVectorEmbeddingStore, descriptions industrielles, données de la base supposées correctes.
   Le compte de recherche a uniquement SELECT ; aucune création SQL au démarrage.
   `PrecomputedIndexResources.packaged(hsCodeService)` valide nomenclature et fichiers ; `RagIndexImporter.importIndex`
-  effectue un import local explicite transactionnel et verrouillé (table non vide = import ignoré sans comparaison).
+  effectue un peuplement local explicite transactionnel et verrouillé (table non vide = import ignoré sans comparaison).
+  Il exige une table existante et SELECT/INSERT ; il ne crée aucun objet SQL.
   Le store en mémoire ne sert que dans les tests ; aucune solution de repli en production. Ne pas utiliser le store industriel `EmbeddingService`
   à leur place : format et descriptions différents.
 - Ressources sous `extension/src/main/resources/` + package commun : `rag_v4.txt`,
@@ -242,6 +243,9 @@ L’unique table métier est `rag.embeddings` ; Flyway a aussi sa table techniqu
 ni comparaison avec les fichiers locaux. Il utilise 1536 dimensions comme V1 et
 ne lit ni manifeste ni vecteurs locaux au démarrage. L’importeur reste un outil
 explicite de préparation locale ; une table non vide est laissée telle quelle.
-Le bootstrap reste réservé au parcours CLI/Compose et à ses tests PostgreSQL.
+Le bootstrap prépare les rôles CLI/Compose et ceux des tests PostgreSQL. Flyway
+crée les tables des tests avec V1 ; les petites fixtures adaptent ensuite la dimension
+dans leur préparation. Compose applique directement le même SQL V1 dans `docker/init.sh`
+avant tout peuplement ; l’importeur ne fait jamais de DDL.
 `PgVectorIndexIT#flywayV1SupportsExternallyLoadedDataWithoutManifest` vérifie la
 recherche sur des données chargées extérieurement, sans secret ni API.

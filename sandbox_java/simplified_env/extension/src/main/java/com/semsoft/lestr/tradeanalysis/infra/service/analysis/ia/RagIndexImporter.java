@@ -9,7 +9,7 @@ import java.util.*;
 import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
 /** Explicit, atomic import for local data preparation into a prepared database.
- * Migrated tables need SELECT/INSERT; creating absent tables also requires schema ownership.
+ * Requires an existing rag.embeddings table and SELECT/INSERT privileges only.
  */
 public final class RagIndexImporter {
     private static final long IMPORT_LOCK = 0x4853524147494e44L;
@@ -25,25 +25,15 @@ public final class RagIndexImporter {
                     lock.setLong(1, IMPORT_LOCK);
                     lock.execute();
                 }
-                boolean exists;
+                // The schema is provisioned beforehand (Flyway V1 in the manual test).
+                // A missing table is an SQL error: this class never creates database objects.
                 try (var statement = connection.createStatement();
-                     var result = statement.executeQuery("SELECT to_regclass('rag.embeddings')")) {
+                     var result = statement.executeQuery("SELECT EXISTS (SELECT 1 FROM rag.embeddings)")) {
                     result.next();
-                    exists = result.getString(1) != null;
-                }
-                if (exists) {
-                    try (var statement = connection.createStatement();
-                         var result = statement.executeQuery("SELECT EXISTS (SELECT 1 FROM rag.embeddings)")) {
-                        result.next();
-                        if (result.getBoolean(1)) {
-                            connection.commit();
-                            return false;
-                        }
+                    if (result.getBoolean(1)) {
+                        connection.commit();
+                        return false;
                     }
-                } else try (var statement = connection.createStatement()) {
-                    statement.execute("CREATE TABLE rag.embeddings (embedding_id UUID PRIMARY KEY, embedding vector("
-                            + resources.dimensions + ") NOT NULL, text TEXT NOT NULL, metadata JSONB NOT NULL)");
-                    statement.execute("CREATE UNIQUE INDEX rag_embeddings_code ON rag.embeddings ((metadata->>'code'))");
                 }
                 try (var insert = connection.prepareStatement(
                         "INSERT INTO rag.embeddings (embedding_id, embedding, text, metadata) VALUES (?, ?, ?, ?::jsonb)")) {

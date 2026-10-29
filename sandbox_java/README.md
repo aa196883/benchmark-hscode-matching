@@ -54,7 +54,9 @@ l’import et la construction du service sans appel API ; le secret reste requis
 
 La base a deux comptes : `rag_import` pour le chargement explicite, `rag_reader`
 pour le service. Une transaction charge les vecteurs ; si la table contient déjà des
-données, l’import est ignoré sans comparaison. Aucun remplissage automatique au démarrage.
+données, l’import est ignoré sans comparaison. L’importeur exige une table déjà créée
+et les seuls droits SELECT/INSERT ; il ne crée ni table ni index. Aucun remplissage
+automatique au démarrage.
 
 Les ressources réelles sont déjà présentes localement. Sur un checkout neuf,
 `./scripts/prepare_rag_resources.sh` copie les données existantes du parent
@@ -72,8 +74,9 @@ docker compose -f simplified_env/compose.yaml up -d --wait
 ./simplified_env/dev.sh run rag-import
 ```
 
-Compose prépare une base dédiée `trade_analysis`, l’extension `vector` et les rôles
-lors du premier démarrage du volume. Connexion locale sur `127.0.0.1:55432` ; pour
+Compose prépare une base dédiée `trade_analysis`, l’extension `vector` et les rôles,
+puis exécute le SQL `V1__init.sql` pour créer la table avant tout peuplement,
+lors du premier démarrage du volume. Flyway continue de gérer V1 dans les tests manuels. Connexion locale sur `127.0.0.1:55432` ; pour
 changer ce port, modifier aussi les deux URL JDBC dans `.env`. Un volume existant
 conserve ses mots de passe : modifier `.env` seul ne les change pas en base.
 

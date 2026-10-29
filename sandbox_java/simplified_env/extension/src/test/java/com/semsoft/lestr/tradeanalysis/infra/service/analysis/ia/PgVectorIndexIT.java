@@ -42,10 +42,20 @@ class PgVectorIndexIT {
         execute(admin(), "ALTER ROLE rag_import PASSWORD 'test-import'; ALTER ROLE rag_reader PASSWORD 'test-reader'");
     }
     @BeforeEach void reset() throws Exception {
-        execute(admin(), "DROP SCHEMA rag CASCADE; CREATE SCHEMA rag AUTHORIZATION rag_import; "
-                + "GRANT USAGE ON SCHEMA rag TO rag_reader; "
-                + "ALTER DEFAULT PRIVILEGES FOR ROLE rag_import IN SCHEMA rag GRANT SELECT ON TABLES TO rag_reader");
+        migrateFreshSchema();
+        // Small fixture vectors; production V1 remains unchanged at 1536 dimensions.
+        execute(admin(), "ALTER TABLE rag.embeddings ALTER COLUMN embedding TYPE vector(2)");
         RagTestSupport.fixtures(directory);
+    }
+    private static void migrateFreshSchema() throws Exception {
+        execute(admin(), "DROP SCHEMA rag CASCADE; DROP TABLE IF EXISTS public.flyway_schema_history");
+        var flyway = org.flywaydb.core.Flyway.configure().dataSource(admin())
+                .locations("classpath:db/migration").load();
+        assertEquals(1, flyway.migrate().migrationsExecuted);
+        assertEquals(0, flyway.migrate().migrationsExecuted);
+        execute(admin(), "GRANT USAGE ON SCHEMA rag TO rag_import, rag_reader; "
+                + "GRANT SELECT, INSERT, UPDATE, DELETE ON rag.embeddings TO rag_import; "
+                + "GRANT SELECT ON rag.embeddings TO rag_reader");
     }
     private PrecomputedIndexResources resources() throws IOException {
         return new PrecomputedIndexResources(directory, RagTestSupport.hsCodeService());
@@ -71,14 +81,7 @@ class PgVectorIndexIT {
     }
 
     @Test void flywayV1SupportsExternallyLoadedDataWithoutManifest() throws Exception {
-        execute(admin(), "DROP SCHEMA rag CASCADE");
-        var flyway = org.flywaydb.core.Flyway.configure().dataSource(admin())
-                .locations("classpath:db/migration").load();
-        assertEquals(1, flyway.migrate().migrationsExecuted);
-        assertEquals(0, flyway.migrate().migrationsExecuted);
-        execute(admin(), "GRANT USAGE ON SCHEMA rag TO rag_import, rag_reader; "
-                + "GRANT SELECT, INSERT, DELETE ON ALL TABLES IN SCHEMA rag TO rag_import; "
-                + "GRANT SELECT ON ALL TABLES IN SCHEMA rag TO rag_reader");
+        migrateFreshSchema();
         double[] vector = new double[1536]; vector[0] = 1;
         // External loader: arbitrary UUID/text and only one row of the catalogue.
         execute(admin(), "INSERT INTO rag.embeddings VALUES ('" + UUID.randomUUID()
@@ -172,7 +175,7 @@ class PgVectorIndexIT {
         var resources = new PrecomputedIndexResources(directory, RagTestSupport.hsCodeService(hierarchy));
         var failure = assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources));
         assertTrue(failure.getMessage().contains("checksum"));
-        assertNull(scalar("SELECT to_regclass('rag.embeddings')::text"));
+        assertEquals("0", scalar("SELECT count(*) FROM rag.embeddings"));
         RagTestSupport.fixtures(directory);
         assertTrue(RagIndexImporter.importIndex(importer(), resources()));
     }
@@ -206,12 +209,13 @@ class PgVectorIndexIT {
         assertFalse(RagIndexImporter.importIndex(importer(), resources()));
     }
 
-    @Test void missingExtensionAndWrongCredentialsFailExplicitly() throws Exception {
-        execute(admin(), "DROP EXTENSION vector");
-        try {
-            assertThrows(SQLException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
-            assertNull(scalar("SELECT to_regclass('rag.embeddings')::text"));
-        } finally { execute(admin(), "CREATE EXTENSION vector"); }
+    @Test void missingTableIsNotCreatedAndImporterNeedsNoDdlPrivileges() throws Exception {
+        assertEquals("false", scalar("SELECT has_schema_privilege('rag_import', 'rag', 'CREATE')::text"));
+        assertTrue(RagIndexImporter.importIndex(importer(), resources()));
+        execute(admin(), "DROP TABLE rag.embeddings");
+        var failure = assertThrows(SQLException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
+        assertEquals("42P01", failure.getSQLState());
+        assertNull(scalar("SELECT to_regclass('rag.embeddings')::text"));
         assertThrows(RuntimeException.class, () -> new PrecomputedEmbeddingIndex(datasource("rag_reader", "wrong"), resources()).search(new double[]{1, 0}, 1));
     }
 
@@ -232,6 +236,7 @@ class PgVectorIndexIT {
 
     @Test @EnabledIfSystemProperty(named = "rag.fullIndex", matches = "true")
     void importsFullIndexAndMatchesJavaReference() throws Exception {
+        migrateFreshSchema();
         var resources = PrecomputedIndexResources.packaged(new HSCodeServiceImpl());
         assertEquals(5612, resources.size()); assertEquals(1536, resources.dimensions);
         long start = System.nanoTime();

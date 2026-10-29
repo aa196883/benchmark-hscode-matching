@@ -14,6 +14,7 @@ services:
       - rag-postgres:/var/lib/postgresql/data
       - ./docker/init.sh:/docker-entrypoint-initdb.d/10-rag.sh:ro
       - ./extension/src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/db/bootstrap.sql:/opt/rag/bootstrap.sql:ro
+      - ./extension/src/main/resources/db/migration/V1__init.sql:/opt/rag/V1__init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d trade_analysis"]
       interval: 2s

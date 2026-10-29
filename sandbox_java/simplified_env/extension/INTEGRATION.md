@@ -47,7 +47,11 @@ Les métadonnées des lignes doivent fournir `code` pour retrouver les libellés
 
 Le bac à sable conserve `db/bootstrap.sql` pour ses rôles CLI/Compose et
 `RagIndexImporter` pour préparer ses tests et sa base locale. L’importeur écrit
-les vecteurs par lots dans une transaction verrouillée ; une erreur annule tout.
+les vecteurs par lots dans une transaction verrouillée ; une erreur annule les insertions.
+Il exige une table `rag.embeddings` préexistante et SELECT/INSERT uniquement : aucune
+création de table, d’index ou de schéma. Une table absente provoque une erreur SQL.
+Flyway applique V1 avant le peuplement du test manuel. Pour Compose, son script
+d’initialisation applique directement le même SQL V1 après le bootstrap des rôles.
 Si la table contient déjà des données, il retourne `false` sans comparaison ni écriture.
 Les fichiers locaux restent validés lors de leur lecture par cet outil de préparation.
 Aucun de ces outils n’est appelé au démarrage du service.
