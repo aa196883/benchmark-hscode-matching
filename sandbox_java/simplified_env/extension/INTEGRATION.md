@@ -22,7 +22,8 @@ Les tests locaux utilisent PostgreSQL 17 / pgvector 0.8.1.
 Sous `src/main/resources/com/semsoft/lestr/tradeanalysis/infra/service/analysis/ia/`,
 conserver sans filtrage `rag_v4.txt`, `rag_v4.schema.json`,
 `h6_2022/{manifest.json,vectors.jsonl}` et `db/bootstrap.sql`.
-Les vecteurs servent uniquement à l’import ; le manifeste reste nécessaire au démarrage.
+Les fichiers `h6_2022` servent uniquement à la préparation locale des données et aux tests.
+Le service industriel n’en a pas besoin pour démarrer ou rechercher.
 Les descriptions viennent du `HSCodeService` industriel : injecter son instance
 `HSCodeServiceImpl` existante, également utilisée pour l’import. Son chargement exige
 `com/semsoft/lestr/tradeanalysis/infra/service/hs_references/{H5.json,H6.json,conversionHS2022-HS2017.csv}`
@@ -34,30 +35,22 @@ Toutes ces ressources sont lisibles depuis un JAR.
 Seuls les codes à six chiffres de HS 2022, hors chapitres 98/99, sont candidats.
 Le contexte assemble chapitre, position et sous-position. La normalisation des espaces
 extérieurs et des guillemets conserve exactement les textes des embeddings existants :
-aucun recalcul ni rechargement de la base existante n’est nécessaire. Le manifeste
-refuse toute nomenclature incompatible.
+aucun recalcul ni rechargement de la base existante n’est nécessaire.
 
-## Préparation puis import explicite
+## Préparation des données
 
-1. Fournir une base dédiée avec pgvector installé. Exécuter `db/bootstrap.sql`
-   **une seule fois**, comme administrateur, dans cette base vide. Ce SQL prépare
-   l’extension, le schéma `rag`, les rôles `rag_import` et `rag_reader` et leurs droits.
-   Adapter ces rôles au provisionnement industriel si nécessaire, en conservant les
-   droits et privilèges par défaut des futures tables. Configurer les mots de passe
-   via le mécanisme de secrets industriel, séparément du SQL.
-2. Exécuter l’importeur avec une `DataSource` du propriétaire `rag_import` :
+En industriel, conserver `db/migration/V1__init.sql` existant : pgvector, schéma
+`rag`, table `rag.embeddings` de dimension 1536 et index unique sur le code.
+Aucune migration supplémentaire ni table de manifeste n’est nécessaire.
+Les données sont chargées extérieurement et considérées correctes par le service.
+Les métadonnées des lignes doivent fournir `code` pour retrouver les libellés HS.
 
-```java
-boolean imported = RagIndexImporter.importIndex(
-    importDataSource, PrecomputedIndexResources.packaged(hsCodeService));
-```
-
-L’import crée `rag.embeddings` et `rag.index_manifest`, valide les fichiers et écrit
-par lots dans une transaction verrouillée. Une erreur annule tout. Un réimport
-identique vérifie puis retourne `false` sans écriture ; un contenu différent ou
-incomplet est refusé. Le remplacement/versionnement d’index n’est pas implémenté.
-Aucun appel fournisseur n’est nécessaire. Les paramètres industriels de connexion,
-TLS, délais et pool appartiennent à la `DataSource` fournie.
+Le bac à sable conserve `db/bootstrap.sql` pour ses rôles CLI/Compose et
+`RagIndexImporter` pour préparer ses tests et sa base locale. L’importeur écrit
+les vecteurs par lots dans une transaction verrouillée ; une erreur annule tout.
+Si la table contient déjà des données, il retourne `false` sans comparaison ni écriture.
+Les fichiers locaux restent validés lors de leur lecture par cet outil de préparation.
+Aucun de ces outils n’est appelé au démarrage du service.
 
 ## Service en lecture seule
 
@@ -67,8 +60,9 @@ RagHSCodeAnalysisService rag = RagHSCodeAnalysisService.construct(
 ```
 
 Réutiliser cette instance et injecter le compte `rag_reader`, limité à la lecture.
-Le service vérifie le manifeste, les dimensions et les codes, sans importer ni lire
-les vecteurs locaux. Il ne crée aucun objet SQL et ne ferme pas la `DataSource`.
+Le service utilise la table existante sans comparaison avec des ressources locales.
+Il ne lit ni manifeste ni vecteurs locaux, ne crée aucun objet SQL et ne ferme pas
+la `DataSource`. La recherche utilise 1536 dimensions, conformément à V1.
 La factory peut lever `IOException`, `SQLException` ou une erreur de validation.
 `loadIndex(readOnlyDataSource, hsCodeService)` ouvre l’index sans construire de client OpenAI.
 
@@ -129,9 +123,8 @@ Les tests ordinaires et PostgreSQL sont sans appels API.
 
 Valider ensuite le contexte Spring, les contrats/dépendances réels et les droits du
 compte applicatif. `RagHSCodeServiceMT` est autonome : il crée un conteneur pgvector
-neuf, prépare les rôles avec des identifiants de test, importe les ressources puis
-compare chaque code et composante de vecteur à `vectors.jsonl` (après conversion
-float32 et normalisation L2, sans tolérance). Cette préparation s’exécute une seule
+neuf, applique V1, prépare les rôles avec des identifiants de test et importe les
+ressources sans comparaison ultérieure avec la base. Cette préparation s’exécute une seule
 fois pour toute la classe ; le conteneur est supprimé à la fin, même en cas d’échec.
 Aucun Compose, base préexistante ni variable `RAG_DB_*` n’est nécessaire.
 
@@ -143,7 +136,7 @@ substitut local de `compat`, qui lit `OPENAI_API_KEY` uniquement dans le bac à 
 Testcontainers et les ressources complètes sur le classpath suffisent côté base ;
 Testcontainers récupère l’image automatiquement si elle manque.
 `-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated` vérifie toute la préparation et
-l’égalité des vecteurs sans appel payant ; le secret reste requis à l’initialisation.
+la construction du service sans appel payant ; le secret reste requis à l’initialisation.
 
 ## Régénérer les vecteurs explicitement
 
@@ -158,16 +151,11 @@ Seule une génération complète fournit un index importable : remplacer ensembl
 `vectors.jsonl` et `manifest.json` dans les ressources `h6_2022`, puis reconstruire.
 L’import refuse de remplacer un index différent déjà présent en base.
 
-## Migrations du test manuel
+## Migration du test manuel
 
-`RagHSCodeServiceMT` exécute `classpath:db/migration` :
-- `V1__init.sql` est la copie exacte de la migration industrielle (vecteurs de 1536 dimensions).
-- `V2__rag_index_manifest.sql` ajoute le marqueur de fin d’import exigé par le RAG.
-
-Conserver la V1 existante dans le dépôt industriel ; intégrer V2 avec un numéro libre
-si cette version y est déjà occupée. Ne pas modifier une migration déjà appliquée.
-L’importeur accepte les deux tables vides préparées par Flyway, puis importe vecteurs
-et manifeste dans une transaction. Un index partiel ou différent reste refusé ; un
-index identique ne provoque aucune écriture. Les rôles de test sont créés après les
-migrations : import avec SELECT/INSERT, service avec SELECT uniquement.
-Le bootstrap reste disponible pour la CLI/Compose et les tests de ce parcours.
+`RagHSCodeServiceMT` exécute `classpath:db/migration/V1__init.sql` avec Flyway.
+Cette migration est la copie exacte de la migration industrielle : conserver celle
+qui existe déjà dans le dépôt cible. Il n’y a qu’une table métier, `rag.embeddings` ;
+Flyway conserve son historique technique dans `public.flyway_schema_history`.
+Les rôles de test sont créés séparément, après migration : import avec SELECT/INSERT,
+service avec SELECT uniquement. Le conteneur neuf est détruit à la fin du test.

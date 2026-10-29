@@ -29,7 +29,7 @@ final class RagMain {
         if (args[0].equals("rag-import")) {
             if (args.length != 1) throw new IllegalArgumentException("rag-import takes no arguments");
             boolean imported = RagIndexImporter.importIndex(datasource(true), PrecomputedIndexResources.packaged(hsCodeService));
-            System.out.println(imported ? "RAG index imported" : "RAG index already imported and verified");
+            System.out.println(imported ? "RAG index imported" : "RAG table already contains data; import skipped");
             return 0;
         }
         boolean replay = args[0].equals("rag-replay");

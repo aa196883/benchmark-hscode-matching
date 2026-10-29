@@ -1,7 +1,6 @@
 package com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia;
 
 import com.pgvector.PGvector;
-import com.semsoft.lestr.tradeanalysis.domain.model.HSCodeWithDescription;
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -9,14 +8,14 @@ import java.sql.*;
 import java.util.*;
 import static com.semsoft.lestr.tradeanalysis.infra.service.analysis.ia.RagJson.*;
 
-/** Explicit, atomic, immutable import into a prepared database.
+/** Explicit, atomic import for local data preparation into a prepared database.
  * Migrated tables need SELECT/INSERT; creating absent tables also requires schema ownership.
  */
 public final class RagIndexImporter {
     private static final long IMPORT_LOCK = 0x4853524147494e44L;
     private RagIndexImporter() {}
 
-    /** @return true for a new import, false for an already identical and complete index. */
+    /** @return true for a new import, false when the table already contains data (no comparison). */
     public static boolean importIndex(DataSource datasource, PrecomputedIndexResources resources)
             throws IOException, SQLException {
         try (var connection = datasource.getConnection()) {
@@ -26,36 +25,25 @@ public final class RagIndexImporter {
                     lock.setLong(1, IMPORT_LOCK);
                     lock.execute();
                 }
-                boolean embeddings, manifest;
+                boolean exists;
                 try (var statement = connection.createStatement();
-                     var result = statement.executeQuery("SELECT to_regclass('rag.embeddings'), to_regclass('rag.index_manifest')")) {
+                     var result = statement.executeQuery("SELECT to_regclass('rag.embeddings')")) {
                     result.next();
-                    embeddings = result.getString(1) != null;
-                    manifest = result.getString(2) != null;
+                    exists = result.getString(1) != null;
                 }
-                if (embeddings || manifest) {
-                    require(embeddings && manifest, "Incomplete RAG database; manual repair required");
-                    boolean empty;
-                    try (var statement = connection.createStatement(); var result = statement.executeQuery(
-                            "SELECT NOT EXISTS (SELECT 1 FROM rag.embeddings) "
-                                    + "AND NOT EXISTS (SELECT 1 FROM rag.index_manifest)")) {
+                if (exists) {
+                    try (var statement = connection.createStatement();
+                         var result = statement.executeQuery("SELECT EXISTS (SELECT 1 FROM rag.embeddings)")) {
                         result.next();
-                        empty = result.getBoolean(1);
+                        if (result.getBoolean(1)) {
+                            connection.commit();
+                            return false;
+                        }
                     }
-                    if (!empty) {
-                        verify(connection, resources);
-                        resources.readVectors((row, vector) -> {});
-                        connection.commit();
-                        return false;
-                    }
-                    // Flyway may prepare both tables; only a completely empty index is importable.
-                    verifyDimensions(connection, resources);
                 } else try (var statement = connection.createStatement()) {
                     statement.execute("CREATE TABLE rag.embeddings (embedding_id UUID PRIMARY KEY, embedding vector("
                             + resources.dimensions + ") NOT NULL, text TEXT NOT NULL, metadata JSONB NOT NULL)");
                     statement.execute("CREATE UNIQUE INDEX rag_embeddings_code ON rag.embeddings ((metadata->>'code'))");
-                    statement.execute("CREATE TABLE rag.index_manifest (singleton BOOLEAN PRIMARY KEY CHECK (singleton), "
-                            + "format_version INTEGER NOT NULL, manifest JSONB NOT NULL)");
                 }
                 try (var insert = connection.prepareStatement(
                         "INSERT INTO rag.embeddings (embedding_id, embedding, text, metadata) VALUES (?, ?, ?, ?::jsonb)")) {
@@ -70,12 +58,6 @@ public final class RagIndexImporter {
                     });
                     insert.executeBatch();
                 }
-                try (var insert = connection.prepareStatement(
-                        "INSERT INTO rag.index_manifest VALUES (true, 1, ?::jsonb)")) {
-                    insert.setString(1, encode(resources.manifest));
-                    insert.executeUpdate();
-                }
-                verify(connection, resources);
                 connection.commit();
                 return true;
             } catch (IOException | SQLException | RuntimeException | Error failure) {
@@ -87,39 +69,6 @@ public final class RagIndexImporter {
 
     static UUID id(String code) {
         return UUID.nameUUIDFromBytes(("rag:h6_2022:" + code).getBytes(StandardCharsets.UTF_8));
-    }
-
-    /** SELECT-only consistency checks, also used before opening the runtime store. */
-    static void verify(Connection connection, PrecomputedIndexResources resources) throws SQLException {
-        try (var statement = connection.createStatement();
-             var result = statement.executeQuery("SELECT format_version, manifest FROM rag.index_manifest")) {
-            require(result.next(), "RAG database has no completed import");
-            require(result.getInt(1) == 1 && resources.manifest.equals(parse(result.getString(2))),
-                    "RAG database index differs from the packaged manifest; replacement is not automatic");
-            require(!result.next(), "Multiple RAG manifests");
-        }
-        verifyDimensions(connection, resources);
-        var expected = new HashMap<String, HSCodeWithDescription>();
-        for (var row : resources.rows) expected.put(row.hsCode().toDigits(), row);
-        try (var statement = connection.createStatement(); var result = statement.executeQuery(
-                "SELECT embedding_id, text, metadata->>'code', embedding IS NOT NULL FROM rag.embeddings")) {
-            while (result.next()) {
-                String code = result.getString(3);
-                var row = expected.remove(code);
-                require(row != null && id(code).equals(result.getObject(1, UUID.class))
-                                && resources.contextualDescription(row).equals(result.getString(2)) && result.getBoolean(4),
-                        "Invalid, duplicate or unknown RAG database candidate");
-            }
-        }
-        require(expected.isEmpty(), "Incomplete RAG database index");
-    }
-    private static void verifyDimensions(Connection connection, PrecomputedIndexResources resources) throws SQLException {
-        try (var statement = connection.createStatement(); var result = statement.executeQuery(
-                "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
-                        + "WHERE attrelid = 'rag.embeddings'::regclass AND attname = 'embedding' AND NOT attisdropped")) {
-            require(result.next() && ("vector(" + resources.dimensions + ")").equals(result.getString(1)),
-                    "RAG database vector dimensions differ from the manifest");
-        }
     }
 
 }

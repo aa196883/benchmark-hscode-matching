@@ -32,9 +32,6 @@ public final class PrecomputedEmbeddingIndex {
     }
     private static PgVectorEmbeddingStore openStore(DataSource datasource, PrecomputedIndexResources resources)
             throws SQLException {
-        try (var connection = datasource.getConnection()) {
-            RagIndexImporter.verify(connection, resources);
-        }
         return PgVectorEmbeddingStore.datasourceBuilder().datasource(datasource)
                 .table("rag.embeddings").dimension(resources.dimensions)
                 .createTable(false).dropTableFirst(false).useIndex(false)

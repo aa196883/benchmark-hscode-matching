@@ -60,10 +60,10 @@ Les tests sont sous le même package dans `src/test/java/`.
   schéma strict, embeddings `text-embedding-3-small`, `maxRetries(0)` côté embeddings.
   La factory utilise `OpenAIProperties.modelName()` ; délais via les modèles injectés.
 - `PrecomputedEmbeddingIndex` / `HSCodeService` : recherche exacte PostgreSQL via
-  PgVectorEmbeddingStore, descriptions industrielles, contrôle du manifeste/dimensions/codes.
+  PgVectorEmbeddingStore, descriptions industrielles, données de la base supposées correctes.
   Le compte de recherche a uniquement SELECT ; aucune création SQL au démarrage.
   `PrecomputedIndexResources.packaged(hsCodeService)` valide nomenclature et fichiers ; `RagIndexImporter.importIndex`
-  effectue un import explicite transactionnel, verrouillé et immuable (identique = aucune écriture).
+  effectue un import local explicite transactionnel et verrouillé (table non vide = import ignoré sans comparaison).
   Le store en mémoire ne sert que dans les tests ; aucune solution de repli en production. Ne pas utiliser le store industriel `EmbeddingService`
   à leur place : format et descriptions différents.
 - Ressources sous `extension/src/main/resources/` + package commun : `rag_v4.txt`,
@@ -131,7 +131,7 @@ git diff --check
 # Préparer les données si absentes/périmées, puis export (lance verify)
 ./scripts/prepare_rag_resources.sh
 ./simplified_env/export.sh -o
-# Base Docker autonome + comparaison exhaustive, sans appel API (secret requis)
+# Base Docker autonome + construction du service, sans appel API (secret requis)
 RUN_OPENAI_MT=true ./simplified_env/dev.sh test -o -pl extension -am \
   '-Dtest=RagHSCodeServiceMT#serviceCanBeInstantiated' -Dsurefire.failIfNoSpecifiedTests=false
 # Un seul cas API payant, clé déjà chargée dans l’environnement
@@ -150,7 +150,7 @@ Choisir les tests : `RagServiceTest`/`ReferenceCasesTest` pour le métier,
 `ClasspathLoadingTest`/`ResourceStreamTest` pour ressources et flux ; tests
 `*CompatibilityTest` du runner pour le socle. `RagHSCodeServiceMT` est exclu des
 sélections ordinaires et exige `RUN_OPENAI_MT=true` plus une sélection explicite.
-Il crée sa propre base Docker, importe et vérifie chaque vecteur une seule fois en
+Il crée sa propre base Docker, applique V1 et importe les vecteurs une seule fois en
 `@BeforeAll`, puis détruit le conteneur à la fin. Aucun `RAG_DB_*` ni Compose requis.
 Le test charge `new OpenAIProperties(Objects.requireNonNull(Utils.getSecret("OPENAI-API")))`,
 comme le test industriel de completion, sans clé de secours. `serviceCanBeInstantiated`
@@ -203,8 +203,8 @@ appelants industriels restent à valider dans leur dépôt ; voir le README raci
   et Flyway, puis importe et vérifie les vecteurs. Il est désactivé avec `@Disabled`.
   Le test local reste activable explicitement selon les commandes ci-dessus.
 - `src/main/resources/db/migration/V1__init.sql` reçu crée l’extension vector, le
-  schéma rag et embeddings, mais pas index_manifest ; la V2 locale complète ce point. Ne pas le confondre avec le
-  bootstrap local et ne pas supposer que ces objets suffisent à l’importeur local.
+  schéma rag et embeddings. C’est la seule migration nécessaire ; aucune table de
+  manifeste ni vérification de correspondance des données n’est utilisée.
 - Contexte confirmé par l’utilisateur : PostgreSQL tourne dans un conteneur Docker
   temporaire uniquement pour le test. Aucun hébergement Railway distant n’est requis.
   `src/main/docker/application.yml` configure PostgreSQL (`org.postgresql.Driver`)
@@ -234,12 +234,14 @@ portent aucun suffixe de version. Aucune reconstruction des embeddings n’est n
 
 ### Migration Flyway du test manuel
 
-`RagHSCodeServiceMT` utilise désormais Flyway 12.4.0 (dépendances de test) avec
+`RagHSCodeServiceMT` utilise Flyway 12.4.0 (dépendances de test) avec la seule
 `extension/src/main/resources/db/migration/V1__init.sql`, copie industrielle exacte
-contrôlée par le manifeste, puis `V2__rag_index_manifest.sql`. Les rôles de test sont
-créés séparément après migration. L’importeur accepte deux tables précréées vides,
-vérifie les dimensions et conserve transaction, verrou et refus des index partiels.
+contrôlée par le manifeste des références. Les rôles de test sont créés séparément.
+L’unique table métier est `rag.embeddings` ; Flyway a aussi sa table technique
+`public.flyway_schema_history`. Le service suppose les données correctes, sans scan
+ni comparaison avec les fichiers locaux. Il utilise 1536 dimensions comme V1 et
+ne lit ni manifeste ni vecteurs locaux au démarrage. L’importeur reste un outil
+explicite de préparation locale ; une table non vide est laissée telle quelle.
 Le bootstrap reste réservé au parcours CLI/Compose et à ses tests PostgreSQL.
-`PgVectorIndexIT#flywayMigrationsSupportImportAndRejectPartialIndexes` vérifie ce parcours
-sans secret ni API. À l’intégration, conserver la V1 existante et choisir un numéro
-libre pour la migration complémentaire si V2 est déjà utilisée.
+`PgVectorIndexIT#flywayV1SupportsExternallyLoadedDataWithoutManifest` vérifie la
+recherche sur des données chargées extérieurement, sans secret ni API.

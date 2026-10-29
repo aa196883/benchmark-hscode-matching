@@ -70,36 +70,32 @@ class PgVectorIndexIT {
         return index.search(query, k).stream().map(row -> row.hsCode().toDigits()).toList();
     }
 
-    @Test void flywayMigrationsSupportImportAndRejectPartialIndexes() throws Exception {
+    @Test void flywayV1SupportsExternallyLoadedDataWithoutManifest() throws Exception {
         execute(admin(), "DROP SCHEMA rag CASCADE");
         var flyway = org.flywaydb.core.Flyway.configure().dataSource(admin())
                 .locations("classpath:db/migration").load();
-        assertEquals(2, flyway.migrate().migrationsExecuted);
+        assertEquals(1, flyway.migrate().migrationsExecuted);
         assertEquals(0, flyway.migrate().migrationsExecuted);
         execute(admin(), "GRANT USAGE ON SCHEMA rag TO rag_import, rag_reader; "
                 + "GRANT SELECT, INSERT, DELETE ON ALL TABLES IN SCHEMA rag TO rag_import; "
                 + "GRANT SELECT ON ALL TABLES IN SCHEMA rag TO rag_reader");
-        // The unchanged industrial migration fixes the dimension at 1536.
-        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
         double[] vector = new double[1536]; vector[0] = 1;
+        // External loader: arbitrary UUID/text and only one row of the catalogue.
+        execute(admin(), "INSERT INTO rag.embeddings VALUES ('" + UUID.randomUUID()
+                + "', '" + encode(vector) + "', 'Externally loaded description', '{\"code\":\"010121\"}')");
+        var index = RagHSCodeAnalysisService.loadIndex(reader(), RagTestSupport.hsCodeService());
+        assertEquals(List.of("010121"), codes(index, vector, 3));
+        assertEquals("1", scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'rag'"));
+        assertFalse(RagIndexImporter.importIndex(importer(), resources()));
+        assertThrows(SQLException.class, () -> execute(reader(), "DELETE FROM rag.embeddings"));
+        execute(importer(), "DELETE FROM rag.embeddings");
+        assertTrue(codes(index, vector, 3).isEmpty());
         rewriteVectors(encode(vector));
         var manifest = (ObjectNode) parse(Files.readString(directory.resolve("manifest.json")));
         manifest.put("dimensions", 1536);
         Files.writeString(directory.resolve("manifest.json"), encode(manifest));
-        var resources = resources();
-        assertTrue(RagIndexImporter.importIndex(importer(), resources));
-        assertFalse(RagIndexImporter.importIndex(importer(), resources));
-        assertEquals(3, new PrecomputedEmbeddingIndex(reader(), resources).size());
-        assertThrows(SQLException.class, () -> execute(reader(), "DELETE FROM rag.embeddings"));
-        execute(importer(), "DELETE FROM rag.index_manifest");
-        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources));
-        assertEquals("3", scalar("SELECT count(*) FROM rag.embeddings"));
-        execute(importer(), "DELETE FROM rag.embeddings");
-        // A failed import into migrated tables rolls back rows, preserving the schema.
-        rewriteVectors("[1,0]");
-        assertThrows(Exception.class, () -> RagIndexImporter.importIndex(importer(), resources()));
-        assertEquals("0", scalar("SELECT count(*) FROM rag.embeddings"));
-        assertEquals("0", scalar("SELECT count(*) FROM rag.index_manifest"));
+        assertTrue(RagIndexImporter.importIndex(importer(), resources()));
+        assertEquals(3, codes(index, vector, 3).size());
     }
 
     @Test void importsReopensAndRunsRagWithReadOnlyRole() throws Exception {
@@ -131,7 +127,7 @@ class PgVectorIndexIT {
     @Test void readerCannotWriteEvenWithTransactionReadOnlyDisabled() throws Exception {
         RagIndexImporter.importIndex(importer(), resources());
         for (String sql : List.of("DELETE FROM rag.embeddings", "UPDATE rag.embeddings SET text = 'changed'",
-                "INSERT INTO rag.index_manifest VALUES (false, 1, '{}')", "CREATE TABLE rag.forbidden (id int)",
+                "CREATE TABLE rag.forbidden (id int)",
                 "CREATE TABLE public.forbidden (id int)", "CREATE TEMP TABLE forbidden (id int)")) {
             try (var connection = reader().getConnection(); var statement = connection.createStatement()) {
                 statement.execute("SET default_transaction_read_only = off");
@@ -142,16 +138,14 @@ class PgVectorIndexIT {
         assertEquals("3", scalar("SELECT count(*) FROM rag.embeddings"));
     }
 
-    @Test void identicalImportDoesNotWriteAndDifferentIndexIsRefused() throws Exception {
+    @Test void populatedTableIsTrustedAndImportDoesNotWrite() throws Exception {
         RagIndexImporter.importIndex(importer(), resources());
         String before = scalar("SELECT string_agg(xmin::text, ',' ORDER BY embedding_id) FROM rag.embeddings");
-        String manifestBefore = scalar("SELECT xmin::text FROM rag.index_manifest");
         assertFalse(RagIndexImporter.importIndex(importer(), resources()));
         assertEquals(before, scalar("SELECT string_agg(xmin::text, ',' ORDER BY embedding_id) FROM rag.embeddings"));
-        assertEquals(manifestBefore, scalar("SELECT xmin::text FROM rag.index_manifest"));
         rewriteVectors("[0,1]");
-        assertThrows(IllegalArgumentException.class, () -> new PrecomputedEmbeddingIndex(reader(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
+        assertNotNull(new PrecomputedEmbeddingIndex(reader(), resources()));
+        assertFalse(RagIndexImporter.importIndex(importer(), resources()));
         assertEquals(before, scalar("SELECT string_agg(xmin::text, ',' ORDER BY embedding_id) FROM rag.embeddings"));
     }
 
@@ -179,7 +173,6 @@ class PgVectorIndexIT {
         var failure = assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources));
         assertTrue(failure.getMessage().contains("checksum"));
         assertNull(scalar("SELECT to_regclass('rag.embeddings')::text"));
-        assertNull(scalar("SELECT to_regclass('rag.index_manifest')::text"));
         RagTestSupport.fixtures(directory);
         assertTrue(RagIndexImporter.importIndex(importer(), resources()));
     }
@@ -194,7 +187,6 @@ class PgVectorIndexIT {
             assertNotEquals(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS));
         }
         assertEquals("3", scalar("SELECT count(*) FROM rag.embeddings"));
-        assertEquals("1", scalar("SELECT count(*) FROM rag.index_manifest"));
     }
 
     @Test void exactTiesCrossingLimitUseHsCodeOrder() throws Exception {
@@ -205,21 +197,13 @@ class PgVectorIndexIT {
         assertEquals(List.of("010121", "010129"), codes(index, new double[]{1, 0}, 2));
     }
 
-    @Test void openingRejectsAbsentIncompleteWrongDimensionOrWrongCodes() throws Exception {
-        assertThrows(SQLException.class, () -> new PrecomputedEmbeddingIndex(reader(), resources()));
+    @Test void openingDoesNotInspectDatabaseContents() throws Exception {
+        assertNotNull(new PrecomputedEmbeddingIndex(reader(), resources()));
         RagIndexImporter.importIndex(importer(), resources());
         execute(importer(), "DELETE FROM rag.embeddings WHERE metadata->>'code' = '010121'");
-        assertThrows(IllegalArgumentException.class, () -> new PrecomputedEmbeddingIndex(reader(), resources()));
-        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
-        reset(); RagIndexImporter.importIndex(importer(), resources());
-        execute(importer(), "UPDATE rag.embeddings SET metadata = '{\"code\":\"999999\"}' WHERE metadata->>'code' = '010121'");
-        assertThrows(IllegalArgumentException.class, () -> new PrecomputedEmbeddingIndex(reader(), resources()));
-        reset(); RagIndexImporter.importIndex(importer(), resources());
-        execute(importer(), "ALTER TABLE rag.embeddings ALTER COLUMN embedding TYPE vector(3) USING '[1,0,0]'::vector(3)");
-        assertThrows(IllegalArgumentException.class, () -> new PrecomputedEmbeddingIndex(reader(), resources()));
-        reset();
-        execute(importer(), "CREATE TABLE rag.embeddings (id int)");
-        assertThrows(IllegalArgumentException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
+        var index = new PrecomputedEmbeddingIndex(reader(), resources());
+        assertEquals(2, codes(index, new double[]{1, 0}, 3).size());
+        assertFalse(RagIndexImporter.importIndex(importer(), resources()));
     }
 
     @Test void missingExtensionAndWrongCredentialsFailExplicitly() throws Exception {
@@ -228,7 +212,7 @@ class PgVectorIndexIT {
             assertThrows(SQLException.class, () -> RagIndexImporter.importIndex(importer(), resources()));
             assertNull(scalar("SELECT to_regclass('rag.embeddings')::text"));
         } finally { execute(admin(), "CREATE EXTENSION vector"); }
-        assertThrows(SQLException.class, () -> new PrecomputedEmbeddingIndex(datasource("rag_reader", "wrong"), resources()));
+        assertThrows(RuntimeException.class, () -> new PrecomputedEmbeddingIndex(datasource("rag_reader", "wrong"), resources()).search(new double[]{1, 0}, 1));
     }
 
     @Test void importsFromJarStreams() throws Exception {

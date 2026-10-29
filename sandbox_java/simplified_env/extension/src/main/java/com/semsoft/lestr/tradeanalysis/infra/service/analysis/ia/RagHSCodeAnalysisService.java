@@ -40,9 +40,9 @@ public final class RagHSCodeAnalysisService implements HSCodeAnalysisService {
         var client = new OpenAiRagClient(properties.apiKey(), index.configuredDimensions(), config);
         return new RagHSCodeAnalysisService(index, client, client, DEFAULT_RETRIEVAL_K);
     }
-    /** Checks the database against HS service descriptions and packaged manifest; does not read or import vectors. */
+    /** Opens the supplied database without comparing it to local index files or scanning its contents. */
     public static PrecomputedEmbeddingIndex loadIndex(DataSource datasource, HSCodeService hsCodeService) throws IOException, SQLException {
-        return new PrecomputedEmbeddingIndex(datasource, PrecomputedIndexResources.packaged(hsCodeService));
+        return new PrecomputedEmbeddingIndex(datasource, PrecomputedIndexResources.catalogue(hsCodeService));
     }
     @Override public SearchResult searchFromDescription(String description) {
         return searchDetailed(description);

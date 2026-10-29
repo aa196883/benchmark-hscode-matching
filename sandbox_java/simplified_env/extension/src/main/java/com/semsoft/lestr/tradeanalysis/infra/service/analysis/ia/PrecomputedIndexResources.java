@@ -40,8 +40,15 @@ public final class PrecomputedIndexResources {
     public PrecomputedIndexResources(Path directory, HSCodeService hsCodeService) throws IOException {
         this(name -> Files.newInputStream(directory.resolve(name)), hsCodeService);
     }
+    /** Runtime catalogue only: no local index files or correspondence checks. */
+    public static PrecomputedIndexResources catalogue(HSCodeService hsCodeService) throws IOException {
+        return new PrecomputedIndexResources(null, hsCodeService, false);
+    }
     public PrecomputedIndexResources(ResourceOpener resources, HSCodeService hsCodeService) throws IOException {
-        this.resources = Objects.requireNonNull(resources);
+        this(resources, hsCodeService, true);
+    }
+    private PrecomputedIndexResources(ResourceOpener resources, HSCodeService hsCodeService, boolean readFiles) throws IOException {
+        this.resources = resources;
         Objects.requireNonNull(hsCodeService);
         this.nomenclature = Objects.requireNonNull(hsCodeService.getHSNomenclature());
         var candidates = new TreeMap<String, HSCodeWithDescription>();
@@ -55,6 +62,13 @@ public final class PrecomputedIndexResources {
         require(!candidates.isEmpty(), "No eligible HS 2022 candidates");
         byCode = Map.copyOf(candidates);
         rows = List.copyOf(candidates.values());
+        if (!readFiles) {
+            manifest = null;
+            dimensions = 1536; // V1__init.sql and text-embedding-3-small defaults.
+            configuredDimensions = null;
+            return;
+        }
+        Objects.requireNonNull(resources);
         try (var input = resources.open("manifest.json")) {
             manifest = parse(new String(input.readAllBytes(), StandardCharsets.UTF_8));
         }

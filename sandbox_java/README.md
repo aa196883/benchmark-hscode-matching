@@ -35,8 +35,8 @@ Ajouter `-o` si le cache Maven est prêt. `MVN=/chemin/bin/mvn` permet de choisi
 Maven ; sinon le script cherche dans le PATH puis `~/.m2/wrapper/dists`.
 Aucun lint Java dédié : `git diff --check` contrôle les espaces.
 
-Le test manuel `RagHSCodeServiceMT` crée aussi sa propre base temporaire : import et
-comparaison exhaustive des vecteurs une fois pour toute la classe, puis recherches
+Le test manuel `RagHSCodeServiceMT` crée aussi sa propre base temporaire : migration V1 et import
+une fois pour toute la classe, puis recherches
 réelles. Aucun Compose ni identifiant PostgreSQL à fournir : Docker et les ressources
 complètes suffisent côté base. La clé est chargée comme dans le test industriel :
 `Utils.getSecret("OPENAI-API")`, transmis à `OpenAIProperties`. Le substitut local de
@@ -48,15 +48,13 @@ RUN_OPENAI_MT=true ./simplified_env/dev.sh test -pl extension -am \
 ```
 
 Sélectionner `RagHSCodeServiceMT#serviceCanBeInstantiated` pour vérifier seulement
-l’import et les vecteurs sans appel API ; le secret reste requis à l’initialisation.
-La comparaison est exacte après la
-conversion float32 et la normalisation L2 appliquées par l’import.
+l’import et la construction du service sans appel API ; le secret reste requis à l’initialisation.
 
 ## Base locale : préparer, importer, lire
 
 La base a deux comptes : `rag_import` pour le chargement explicite, `rag_reader`
-pour le service. Une transaction publie l’index complet ; un import identique ne
-modifie rien, un index différent est refusé. Aucun remplissage automatique au démarrage.
+pour le service. Une transaction charge les vecteurs ; si la table contient déjà des
+données, l’import est ignoré sans comparaison. Aucun remplissage automatique au démarrage.
 
 Les ressources réelles sont déjà présentes localement. Sur un checkout neuf,
 `./scripts/prepare_rag_resources.sh` copie les données existantes du parent
@@ -83,8 +81,9 @@ La CLI lit `RAG_IMPORT_DB_{URL,USER,PASSWORD}` pour l’import et
 `RAG_DB_{URL,USER,PASSWORD}` pour la recherche. Elle ne charge aucun `.env`.
 Les descriptions proviennent du service industriel `HSCodeServiceImpl` (HS 2022),
 injecté via `HSCodeService`.
-Le service vérifie descriptions, manifeste, dimensions et codes en base, sans relire
-le fichier de vecteurs. Une base absente/incompatible provoque une erreur explicite.
+Le service utilise directement `rag.embeddings`, supposée correctement chargée, avec
+1536 dimensions comme dans V1. Aucun manifeste ni fichier de vecteurs local n’est
+nécessaire pour la recherche ; les erreurs SQL sont remontées lors de son exécution.
 
 ```bash
 # Recherche réelle : OPENAI_API_KEY doit aussi être exportée (appel payant)
@@ -147,10 +146,9 @@ La factory `HSCodeServiceFactory.constructOpenAICompletionAndVerbatim` assemble 
 RAG puis Verbatim avec les contrats sans suffixe. Le banc local est aligné sur ces
 contrats et ne contient plus le parcours Completion historique.
 `ApplicationConfiguration` injecte une DataSource ; le test manuel reçu utilise
-Testcontainers et Flyway. La migration `V1__init.sql` reçue ne crée pas
-`rag.index_manifest` : la migration complémentaire `V2__rag_index_manifest.sql` la crée.
-Le test local exécute ces deux migrations avec Flyway ; V1 est copiée sans modification
-et son empreinte est contrôlée dans `reference-manifest.json`.
+Testcontainers et Flyway. La seule migration est `V1__init.sql`, copiée sans modification
+et contrôlée par `reference-manifest.json`. Elle crée l’unique table métier
+`rag.embeddings`. Flyway conserve également sa table technique d’historique dans `public`.
 Le contexte confirmé est une base PostgreSQL Docker temporaire réservée au test.
 `src/main/docker/application.yml` configure PostgreSQL avec Hikari pour l’application ;
 le test crée sa propre `PGSimpleDataSource` depuis Testcontainers et utilise Flyway
